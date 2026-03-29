@@ -1,6 +1,9 @@
 # ==========================================
 # Node.js / Next.js (Frontend)
 # ==========================================
+infrastructure/Lib/
+infrastructure/Scripts/
+infrastructure/pyvenv.cfg
 node_modules/
 .pnp
 .pnp.js
@@ -72,3 +75,24 @@ Thumbs.db
 *.zip
 *.tar.gz
 *.tgz
+
+# ==========================================
+# Target Pip Installs (Backend)
+# ==========================================
+/backend/*
+!/backend/main.py
+!/backend/models.py
+!/backend/requirements.txt
+!/backend/.env.example
+!/backend/routers/
+!/backend/services/
+
+# ==========================================
+# Target Pip Installs (Worker)
+# ==========================================
+/worker/*
+!/worker/handler.py
+!/worker/notifier.py
+!/worker/requirements.txt
+!/worker/scraper.py
+!/worker/throttle.py

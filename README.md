@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🚀 RigRadar
+# 📡 RigRadar
 **The Ultimate Real-Time Hardware Price Tracker for the Indian Market**
 
 <p align="center">
@@ -39,7 +39,7 @@ Building a custom PC or hunting for the lowest prices on electronics is a frustr
 RigRadar uses a highly scalable, decoupled architecture split between a React-based SSR frontend and an asynchronous Python backend/worker engine.
 
 ### Frontend
-- **Framework - `Next.js 15 (App Router)`**: Drives the user interface architecture. It handles routing, server-side data fetching where necessary, and builds a fluid SPA (Single Page Application) experience on the client side.
+- **Framework - `Next.js 16 (App Router)`**: Drives the user interface architecture. It handles routing, server-side data fetching where necessary, and builds a fluid SPA (Single Page Application) experience on the client side.
 - **UI & Styling - `TailwindCSS v4`**: Utility-first CSS framework providing a sleek, pixel-perfect glassmorphic dark-mode aesthetic.
 - **Animations - `Framer Motion`**: Used to supply ultra-fluid micro-animations, staggering list loads, and satisfying modal transitions which dramatically increase the premium feel of the app.
 - **Data Visualization - `Recharts`**: Renders responsive SVG charts for the product analytics dashboard, making historical pricing data extremely interactive with hover-based tooltips.
@@ -104,10 +104,4 @@ How does RigRadar perform its magic under the hood?
 
 <br />
 
-<div align="center">
-  <h3>Built with ❤️ for gamers, PC builders, and absolute deal hunters.</h3>
-  <br>
-  <a href="https://github.com/CypherXXXX/Rig-Radar">
-    <img src="https://img.shields.io/github/stars/CypherXXXX/Rig-Radar?style=social" alt="Star on GitHub" />
-  </a>
-</div>
+
