@@ -1,0 +1,152 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: RigRadar Serverless Infrastructure
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Runtime: python3.12
+    Environment:
+      Variables:
+        AWS_REGION_NAME: !Ref AWS::Region
+        DYNAMODB_TABLE_TRACKED: !Ref TrackedItemsTable
+        DYNAMODB_TABLE_HISTORY: !Ref PriceHistoryTable
+        DYNAMODB_TABLE_USERS: !Ref UsersTable
+        DYNAMODB_TABLE_TRENDING: !Ref TrendingTable
+
+Resources:
+
+  TrackedItemsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: RigRadar_TrackedItems
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: item_id
+          AttributeType: S
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: item_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: user_id-index
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  PriceHistoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: RigRadar_PriceHistory
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: item_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: item_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: RigRadar_Users
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+
+  TrendingTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: RigRadar_Trending
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: item_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: item_id
+          KeyType: HASH
+
+  RigRadarApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: RigRadar-API
+      Handler: main.handler
+      CodeUri: ../backend/
+      Timeout: 30
+      MemorySize: 256
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackedItemsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PriceHistoryTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrendingTable
+      Events:
+        ApiProxy:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+        ApiRoot:
+          Type: Api
+          Properties:
+            Path: /
+            Method: ANY
+
+  RigRadarScraperFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: RigRadar-Scraper
+      Handler: handler.lambda_handler
+      CodeUri: ../worker/
+      Timeout: 300
+      MemorySize: 512
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackedItemsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PriceHistoryTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrendingTable
+      Events:
+        ScheduledScrape:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0/30 * * * ? *)
+            Description: Scrape prices every 30 minutes
+            Enabled: true
+
+Outputs:
+  ApiEndpoint:
+    Description: RigRadar API Gateway endpoint
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+
+  ApiFunction:
+    Description: RigRadar API Lambda Function ARN
+    Value: !GetAtt RigRadarApiFunction.Arn
+
+  ScraperFunction:
+    Description: RigRadar Scraper Lambda Function ARN
+    Value: !GetAtt RigRadarScraperFunction.Arn
+
+  TrackedItemsTableName:
+    Description: DynamoDB TrackedItems table name
+    Value: !Ref TrackedItemsTable
+
+  PriceHistoryTableName:
+    Description: DynamoDB PriceHistory table name
+    Value: !Ref PriceHistoryTable
