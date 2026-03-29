@@ -32,30 +32,36 @@ def build_discord_embed(
     store_name = store_display_names.get(store, store.title())
 
     embed = {
-        "title": f"🔻 Price Drop Alert — {product_name[:100]}",
+        "title": f"🚨 PRICE DROP ALERT: {product_name[:80]}...",
         "url": product_url,
-        "color": 2067276,
+        "color": 15158332,
+        "description": f"Great news! A product you are tracking on **{store_name}** just dropped in price.",
         "fields": [
             {
-                "name": "📦 Store",
+                "name": "🛍️ Store",
                 "value": store_name,
                 "inline": True,
             },
             {
-                "name": "💰 Old Price",
-                "value": f"~~${old_price:.2f}~~",
+                "name": "💰 Previous Price",
+                "value": f"~~₹{old_price:,.2f}~~",
                 "inline": True,
             },
             {
-                "name": "🔥 New Price",
-                "value": f"**${new_price:.2f}**",
+                "name": "🔥 Current Price",
+                "value": f"**₹{new_price:,.2f}**",
                 "inline": True,
             },
             {
-                "name": "📉 Drop",
+                "name": "📉 Total Discount",
                 "value": f"**{drop_percentage}%** off",
                 "inline": True,
             },
+            {
+                "name": "🔗 Product Link",
+                "value": f"[Click here to grab the deal!]({product_url})",
+                "inline": False,
+            }
         ],
         "footer": {
             "text": "RigRadar — Secure the drop. Build the rig.",
@@ -117,31 +123,48 @@ def build_email_body(
     drop_percentage: float,
 ) -> str:
     return f"""
+    <!DOCTYPE html>
     <html>
-    <body style="font-family: Arial, sans-serif; background-color: 
-        <div style="max-width: 600px; margin: 0 auto; background: 
-            <h1 style="color: 
-            <h2 style="color: 
-            <table style="width: 100%; margin-bottom: 24px;">
-                <tr>
-                    <td style="padding: 12px; background: 
-                        <div style="color: 
-                        <div style="color: 
-                    </td>
-                    <td style="padding: 12px; background: 
-                        <div style="color: 
-                        <div style="color: 
-                    </td>
-                    <td style="padding: 12px; background: 
-                        <div style="color: 
-                        <div style="color: 
-                    </td>
-                </tr>
-            </table>
-            <a href="{product_url}" style="display: inline-block; background: linear-gradient(135deg, 
-                View Product on {store.title()}
-            </a>
-            <p style="color: 
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f1115; margin: 0; padding: 40px 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background: #161b22; border-radius: 12px; padding: 40px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); border: 1px solid #30363d;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h1 style="color: #58a6ff; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">RigRadar Alert</h1>
+                <p style="color: #8b949e; font-size: 16px; margin-top: 8px;">We spotted a price drop for you.</p>
+            </div>
+            
+            <h2 style="color: #c9d1d9; font-size: 20px; line-height: 1.4; margin-bottom: 24px; text-align: center;">{product_name}</h2>
+            
+            <div style="background: #0d1117; border-radius: 8px; padding: 20px; margin-bottom: 30px; border: 1px solid #21262d;">
+                <table style="width: 100%; text-align: center; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 10px; border-right: 1px solid #30363d; width: 33%;">
+                            <div style="color: #8b949e; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Store</div>
+                            <div style="color: #c9d1d9; font-size: 18px; font-weight: bold;">{store.title()}</div>
+                        </td>
+                        <td style="padding: 10px; border-right: 1px solid #30363d; width: 33%;">
+                            <div style="color: #8b949e; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Previous</div>
+                            <div style="color: #8b949e; font-size: 16px; text-decoration: line-through;">₹{old_price:,.2f}</div>
+                        </td>
+                        <td style="padding: 10px; width: 33%;">
+                            <div style="color: #2ea043; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Current</div>
+                            <div style="color: #3fb950; font-size: 20px; font-weight: bold;">₹{new_price:,.2f}</div>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h3 style="color: #ff7b72; margin: 0; font-size: 18px;">Total Discount: {drop_percentage}% OFF</h3>
+            </div>
+            
+            <div style="text-align: center;">
+                <a href="{product_url}" style="display: inline-block; background-color: #238636; color: #ffffff; text-decoration: none; padding: 14px 32px; font-size: 16px; font-weight: 600; border-radius: 6px; box-shadow: 0 1px 0 rgba(27,31,36,0.1);">
+                    View Product Deal
+                </a>
+            </div>
+            
+            <hr style="border: 0; border-top: 1px solid #30363d; margin: 40px 0 20px 0;">
+            <p style="color: #8b949e; font-size: 12px; text-align: center; margin: 0;">
                 RigRadar — Secure the drop. Build the rig.
             </p>
         </div>
@@ -158,10 +181,11 @@ def send_email_notification(
     store: str,
 ) -> bool:
     drop_percentage = calculate_drop_percentage(old_price, new_price)
+    html_body = build_email_body(product_name, old_price, new_price, product_url, store, drop_percentage)
 
     logger.info(
         f"Email notification queued for {email_address}: "
-        f"{product_name} dropped from ${old_price:.2f} to ${new_price:.2f} ({drop_percentage}%)"
+        f"{product_name} dropped from ₹{old_price:,.2f} to ₹{new_price:,.2f} ({drop_percentage}%)"
     )
 
     return True
