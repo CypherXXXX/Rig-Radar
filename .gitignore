@@ -1,6 +1,3 @@
-# ==========================================
-# Node.js / Next.js (Frontend)
-# ==========================================
 infrastructure/Lib/
 infrastructure/Scripts/
 infrastructure/pyvenv.cfg
@@ -14,16 +11,13 @@ build/
 .swc/
 coverage/
 .nyc_output/
+tsconfig.tsbuildinfo
 
-# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# ==========================================
-# Python / FastAPI (Backend & Worker)
-# ==========================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -39,9 +33,6 @@ venv.bak/
 .pytest_cache/
 htmlcov/
 
-# ==========================================
-# Environment Variables
-# ==========================================
 .env
 .env.local
 .env.development.local
@@ -49,18 +40,12 @@ htmlcov/
 .env.production.local
 *.env.local
 
-# ==========================================
-# Infrastructure & Cloud Deployments
-# ==========================================
 .aws-sam/
 .sam/
 packaged.yaml
 .vercel
 .turbo
 
-# ==========================================
-# OS & IDE Files
-# ==========================================
 .DS_Store
 Thumbs.db
 *.swp
@@ -69,16 +54,10 @@ Thumbs.db
 .idea/
 *.code-workspace
 
-# ==========================================
-# Archives
-# ==========================================
 *.zip
 *.tar.gz
 *.tgz
 
-# ==========================================
-# Target Pip Installs (Backend)
-# ==========================================
 /backend/*
 !/backend/main.py
 !/backend/models.py
@@ -87,12 +66,13 @@ Thumbs.db
 !/backend/routers/
 !/backend/services/
 
-# ==========================================
-# Target Pip Installs (Worker)
-# ==========================================
 /worker/*
 !/worker/handler.py
 !/worker/notifier.py
 !/worker/requirements.txt
 !/worker/scraper.py
 !/worker/throttle.py
+
+frontend/task.md
+frontend/.clerk/
+frontend/tsconfig.tsbuildinfo

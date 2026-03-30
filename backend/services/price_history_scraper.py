@@ -5,9 +5,17 @@ import hashlib
 import json
 import time as _time
 from typing import Optional
-from curl_cffi import requests as curl_requests
+import httpx
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Cache-Control": "no-cache",
+}
 
 _stats_cache: dict = {}
 STATS_CACHE_TTL = 3600 * 6
@@ -26,16 +34,7 @@ def extract_asin(url: str) -> Optional[str]:
     return None
 
 def _fetch_page(url: str, timeout: int = 20) -> str:
-    response = curl_requests.get(
-        url,
-        impersonate="chrome120",
-        timeout=timeout,
-        headers={
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
-            "Cache-Control": "no-cache",
-        },
-    )
+    response = httpx.get(url, timeout=timeout, headers=BROWSER_HEADERS, follow_redirects=True)
     response.raise_for_status()
     return response.text
 
@@ -61,23 +60,22 @@ def _find_product_slug(asin: Optional[str], product_url: str = "") -> Optional[s
         amazon_url = f"https://www.amazon.in/dp/{dp_match.group(1)}"
 
     try:
-        session = curl_requests.Session(impersonate="chrome120")
-        session.get("https://pricehistory.app", timeout=10)
-
-        resp = session.post(
-            "https://pricehistory.app/api/search",
-            json={"url": amazon_url},
-            timeout=15,
-            headers={
-                "Referer": "https://pricehistory.app/",
-                "Origin": "https://pricehistory.app",
-                "Content-Type": "application/json",
-            },
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("status") and data.get("code"):
-                return data["code"]
+        with httpx.Client(follow_redirects=True, timeout=15) as client:
+            client.get("https://pricehistory.app", timeout=10)
+            resp = client.post(
+                "https://pricehistory.app/api/search",
+                json={"url": amazon_url},
+                timeout=15,
+                headers={
+                    "Referer": "https://pricehistory.app/",
+                    "Origin": "https://pricehistory.app",
+                    "Content-Type": "application/json",
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("status") and data.get("code"):
+                    return data["code"]
     except Exception:
         pass
 
@@ -297,7 +295,7 @@ def fetch_external_price_history(
     asin = extract_asin(product_url)
     product_key = asin if asin else hashlib.md5(product_url.encode()).hexdigest()[:10]
     cache_key = f"{product_key}_{months}"
-    
+
     now = _time.time()
     if cache_key in _stats_cache:
         cached = _stats_cache[cache_key]

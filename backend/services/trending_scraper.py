@@ -2,9 +2,17 @@ import re
 import time
 import hashlib
 from typing import Optional
-from curl_cffi import requests as curl_requests
+import httpx
 from bs4 import BeautifulSoup
 import json
+
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Cache-Control": "no-cache",
+}
 
 AMAZON_SEARCH_URLS = [
     {"url": "https://www.amazon.in/s?k=nvidia+geforce+rtx+graphics+card&s=review-rank", "category": "GPU", "min_price": 10000},
@@ -25,16 +33,7 @@ _cache: dict = {"data": [], "timestamp": 0}
 CACHE_TTL = 3600
 
 def _fetch_html(url: str) -> str:
-    response = curl_requests.get(
-        url,
-        impersonate="chrome120",
-        timeout=20,
-        headers={
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
-            "Cache-Control": "no-cache",
-        },
-    )
+    response = httpx.get(url, timeout=20, headers=BROWSER_HEADERS, follow_redirects=True)
     response.raise_for_status()
     return response.text
 

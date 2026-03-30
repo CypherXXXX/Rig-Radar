@@ -1,7 +1,14 @@
-from curl_cffi import requests as curl_requests
+import httpx
 from bs4 import BeautifulSoup
 from typing import Optional
 import re
+
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+}
 
 PRICE_SELECTORS = {
     "amazon": [
@@ -52,16 +59,7 @@ IMAGE_SELECTORS = {
 }
 
 def fetch_product_page(url: str) -> str:
-    response = curl_requests.get(
-        url,
-        impersonate="chrome120",
-        timeout=15,
-        headers={
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-        },
-    )
+    response = httpx.get(url, timeout=15, headers=BROWSER_HEADERS, follow_redirects=True)
     response.raise_for_status()
     return response.text
 

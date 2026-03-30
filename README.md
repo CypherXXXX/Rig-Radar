@@ -20,17 +20,17 @@
 ## 🎯 Why is this project needed?
 Building a custom PC or hunting for the lowest prices on electronics is a frustrating experience. Prices on e-commerce sites like Amazon India and Flipkart fluctuate daily, sometimes hourly. Manually checking them leads to missed deals, prolonged waiting times, and ultimately wasted money.
 
-**RigRadar** was designed with one main purpose: **to relentlessly automate hardware price tracking across major Indian online retailers**. By simply pasting a product URL into the dashboard, RigRadar begins an ongoing watch over that item. If the price ever drops below your custom threshold, the system immediately shoots you an alert so you can snag the deal before stock runs out. It also extracts and plots historical analytics so you can instantly tell if your "sale price" is a true deal or just a deceptive retail markdown.
+**RigRadar** was designed with one main purpose: **to relentlessly automate hardware price tracking across major Indian online retailers**. By simply pasting a product URL into the dashboard, RigRadar begins an ongoing watch over that item. If the price ever drops below your custom threshold, the system immediately sends a Discord webhook notification or an email alert so you can snag the deal before stock runs out. It also extracts and plots historical analytics so you can instantly tell if your "sale price" is a true deal or just a deceptive retail markdown.
 
 ---
 
 ## ✨ Key Features
 - **🌐 Dual-Platform Compatibility:** Flawlessly parses, tracks, and standardizes links directly from Amazon India (`amazon.in`) and Flipkart (`flipkart.com`).
 - **📊 Interactive Analytics:** Automatically extracts and plots up to a 6-month historical price curve for items, displaying real-time highest, lowest, and average trends on an interactive graph.
-- **⚡ Real-Time Price Polling:** Sets up rigorous background workers synchronized via AWS Serverless Architecture to watch your targeted price thresholds continuously without manual intervention.
-- **🔔 Instant Notifications:** Triggers lightning-fast email alerts the exact moment a background check detects a price drop below your target limit.
+- **⚡ Real-Time Price Polling:** Sets up rigorous background workers synchronized via AWS Serverless Architecture to watch your targeted price thresholds every 30 minutes without manual intervention.
+- **🔔 Instant Notifications:** Triggers Discord webhook alerts and email notifications the exact moment a background check detects a price drop below your target limit.
 - **🔐 Secure Authentication:** Seamless, robust login flow powered by Clerk Auth, securely partitioning trackers between user accounts.
-- **🔥 Trending Deals Hub:** Aggregates and displays curated live-drop deals currently happening in the market for users seeking spontaneous hardware upgrades.
+- **🔥 Trending Deals Hub:** Aggregates and displays curated live-scrape results from Amazon India across 12 hardware categories (GPU, CPU, RAM, SSD, Monitor, Keyboard, Mouse, Motherboard, Cooling, PSU, Headset, Laptop).
 - **💸 Localized Currency Formatting:** Built exclusively for the Indian retail space, tracking limits and rendering everything native using INR (₹).
 
 ---
@@ -48,18 +48,17 @@ RigRadar uses a highly scalable, decoupled architecture split between a React-ba
 ### Backend API
 - **Web Framework - `FastAPI (Python)`**: Acts as the rapid, type-safe engine powering the core network requests. FastAPI ensures that routing, API parsing via Pydantic, and request parallelization are highly optimized.
 - **Database - `AWS DynamoDB`**: A Serverless NoSQL cloud database integrated via `boto3`. Hand-picked for its lightning-fast read/write capacities during heavy simultaneous price polling and scaling dynamically without maintaining instances.
-- **TLS Bypass Scraping - `Curl-Cffi` & `BeautifulSoup4`**: Emulates browser TLS fingerprints to seamlessly bypass Amazon and Flipkart's aggressive anti-bot mechanisms, fetching true product metadata and pricing without getting IP blocked or hitting CAPTCHAs.
+- **HTTP Scraping - `HTTPX` & `BeautifulSoup4`**: `httpx` is used for fast, async-compatible HTTP requests to Amazon and Flipkart. `BeautifulSoup4` with the `lxml` parser extracts structured product metadata (name, price, image) from the raw HTML response.
 
 ### Infrastructure & Workers
-- **Background Cron Jobs - `AWS SAM & Lambda`**: The `worker/` directory contains handlers (like `scraper.py` and `notifier.py`) deployed as serverless functions. They wake up on a cron schedule, sweep the DynamoDB table for active trackers, check live prices concurrently, and kill their instance—meaning zero idle server costs.
-- **Alert Dispatch - `SMTP Email Notifications`**: Handled by the worker instance to immediately shoot an email payload into the user's inbox on a successful trigger match.
+- **Background Cron Jobs - `AWS SAM & Lambda`**: The `worker/` directory contains handlers (like `scraper.py` and `notifier.py`) deployed as serverless functions. They wake up on a **30-minute cron schedule**, sweep the DynamoDB table for active trackers, check live prices concurrently, and terminate after completion — meaning zero idle server costs.
+- **Alert Dispatch - `Discord Webhooks`**: When a background check detects a price drop below the tracker's target, the worker dispatches a rich Discord embed message to the user-supplied webhook URL with product details, price comparison, and a direct buy link.
 
 ---
 
 ## 📂 Project Folder Structure
 ```text
 RigRadar/
-├── .github/                   # GitHub specific workflows and configurations
 ├── backend/                   # 🐍 FastAPI Backend Engine
 │   ├── routers/               # Specific API sub-routers (tracking endpoints)
 │   ├── services/              # Core Scraping & DynamoDB abstraction layers
@@ -70,21 +69,20 @@ RigRadar/
 │   ├── public/                # Static assets and fonts
 │   ├── src/
 │   │   ├── app/               # Next.js App Router (Landing, Auth, Dashboard, Analytics routes)
-│   │   ├── components/        # Reusable UI components (Modals, Charts, Trackers)
+│   │   ├── components/        # Reusable UI components (AddTrackerModal, TrackerCard, Navbar, Toast)
 │   │   ├── lib/               # Utility functions, custom hooks, and API fetch wrappers
-│   │   └── types/             # Strict Typescript interface models
+│   │   └── types/             # Strict TypeScript interface models
 │   ├── next.config.ts         # Next.js framework configuration
-│   ├── package.json           # Node Dependencies & script mappings
-│   └── tailwind.config.ts     # Global styling variables and configurations
+│   └── package.json           # Node Dependencies & script mappings
 ├── worker/                    # ⚙️ AWS Lambda Background Jobs
 │   ├── handler.py             # Serverless event entrypoint/trigger logic
-│   ├── notifier.py            # Alert dispatcher pipeline for triggering emails
-│   ├── scraper.py             # Concurrent massive price polling logic
-│   ├── throttle.py            # Custom rate limiting logic
+│   ├── notifier.py            # Alert dispatcher pipeline (Discord webhooks + email scaffold)
+│   ├── scraper.py             # Concurrent price polling logic
+│   ├── throttle.py            # Custom rate limiting and domain-grouped request batching
 │   └── requirements.txt       # Worker-specific dependencies
 ├── infrastructure/            # ☁️ AWS CloudFormation Infrastructure
-│   ├── template.yaml          # AWS SAM IaC describing DynamoDB & Lambda provisioning
-│   └── deploy.sh              # Automated deployment shell scripts
+│   ├── template.yaml          # AWS SAM IaC describing DynamoDB tables & Lambda functions
+│   └── deploy.sh              # Automated deployment shell script
 ├── .gitignore                 # Tracked ignorance map for Git
 └── README.md                  # Detailed Project Documentation (You are here!)
 ```
@@ -94,13 +92,13 @@ RigRadar/
 ## 🔄 The Complete Architectural Workflow
 How does RigRadar perform its magic under the hood?
 
-1. **User Action:** You open the web application, log in using Clerk, paste an Amazon.in or Flipkart.com link into the **Add Tracker Modal**, and define your desired target price (e.g., ₹25,000).
-2. **Metadata Extraction:** The Next.js frontend shoots a secure REST payload to the FastAPI backend. The API utilizes `curl-cffi` to imitate a real browser, fetching the latest Store ID, Image, Header Title, and live `current_price` while bypassing scraping deterrents.
+1. **User Action:** You open the web application, log in using Clerk, paste an Amazon.in or Flipkart.com link into the **Add Tracker Modal**, choose Discord or Email as your notification method, and define your desired target price (e.g., ₹25,000).
+2. **Metadata Extraction:** The Next.js frontend shoots a secure REST payload to the FastAPI backend. The API uses `httpx` to fetch the product page and `BeautifulSoup4` to parse the product title, image, and current live price.
 3. **Database Injection:** The newly parsed and sanitized tracking configuration, tied directly to your Clerk User ID, is written instantly to an active partition inside the AWS DynamoDB table.
-4. **Historical Graph Generation:** Immediately upon creating or viewing a tracked product, the backend accesses cached/historical web indexers associated with that product up to 6 months back. The data is parsed down to the exact lowest/highest bounds and fed straight to your frontend charting component for on-demand rendering.
-5. **Continuous Deep Background Polling:** Every few minutes, a detached AWS Lambda worker module automatically wakes up. It fetches all active links across the entire active DynamoDB table and runs high-concurrency checks against their current retail prices.
-6. **Threshold Trigger Match:** If the background check hits upon a live price (say, ₹24,800) that is verified to be *lower* than your target of ₹25,000, it flags the item row for dispatch.
-7. **Immediate Dispatch:** The active worker triggers the `notifier.py` handler which shoots an un-throttled, instant email alert right into your inbox informing you of the active deal, along with a direct affiliate link to checkout instantly.
+4. **Historical Graph Generation:** Immediately upon creating or viewing a tracked product, the backend accesses the `pricehistory.app` external indexer to retrieve up to 6 months of historical pricing data. If external data is unavailable, a statistically plausible synthetic price curve is generated from the current price.
+5. **Continuous Background Polling:** Every **30 minutes**, a detached AWS Lambda worker automatically wakes up. It fetches all active trackers across the DynamoDB table and runs high-concurrency price checks using domain-grouped batching with exponential backoff and jitter.
+6. **Threshold Trigger Match:** If the background check detects a live price (say, ₹24,800) that is lower than your target of ₹25,000, it flags the item for notification dispatch.
+7. **Immediate Dispatch:** The worker triggers `notifier.py`, which sends a rich Discord embed to the user's configured webhook URL — including price comparison, drop percentage, product image, and a direct buy link.
 
 <br />
 

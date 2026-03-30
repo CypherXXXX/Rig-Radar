@@ -2,21 +2,21 @@
 
 import { motion, useScroll, useTransform } from "framer-motion";
 import Link from "next/link";
-import { Radar, TrendingDown, Bell, LineChart, ArrowRight, Sparkles, Shield, Zap, ChevronRight, Star } from "lucide-react";
+import { Radar, TrendingDown, Bell, LineChart, ArrowRight, Sparkles, Shield, Zap, ChevronRight, Clock, Info, ExternalLink } from "lucide-react";
 import { useRef } from "react";
 
 const stats = [
-    { value: "2", label: "Supported Platforms" },
-    { value: "0ms", label: "Alert Delay" },
-    { value: "6 Mo", label: "Price History Data" },
-    { value: "100%", label: "Free to Use" },
+    { value: "2", label: "Supported Platforms", sub: "Amazon & Flipkart" },
+    { value: "30m", label: "Poll Interval", sub: "Automatic re-check" },
+    { value: "6 Mo", label: "Price History", sub: "Per product tracked" },
+    { value: "100%", label: "Free to Use", sub: "No credit card needed" },
 ];
 
 const features = [
     {
         icon: TrendingDown,
         title: "Smart Price Tracking",
-        description: "Monitor prices across Amazon & Flipkart with real-time scraping. Never miss a deal on GPUs, CPUs, SSDs, and more.",
+        description: "Monitor prices across Amazon India & Flipkart with automated scraping. Track GPUs, CPUs, SSDs, RAM, monitors, and all PC components.",
         gradient: "from-cyan-400 to-cyan-500",
         glow: "group-hover:shadow-[0_0_40px_-10px_rgba(34,211,238,0.4)]",
         iconBg: "bg-cyan-400/10 border-cyan-400/20",
@@ -24,8 +24,8 @@ const features = [
     },
     {
         icon: Bell,
-        title: "Instant Drop Alerts",
-        description: "Set your target price and receive instant notifications via Email the moment prices fall below your threshold.",
+        title: "Discord & Email Alerts",
+        description: "Set your target price and receive instant notifications via Discord webhook or Email the moment the price falls below your threshold.",
         gradient: "from-purple-400 to-purple-500",
         glow: "group-hover:shadow-[0_0_40px_-10px_rgba(168,85,247,0.4)]",
         iconBg: "bg-purple-500/10 border-purple-500/20",
@@ -34,7 +34,7 @@ const features = [
     {
         icon: LineChart,
         title: "Historical Analytics",
-        description: "Visualize 6-month price trends with interactive charts. See lowest, highest, and average prices at a glance to time your purchase perfectly.",
+        description: "Visualize up to 6 months of price trend data with interactive charts. See lowest, highest, and average prices at a glance to time your purchase perfectly.",
         gradient: "from-emerald-400 to-emerald-500",
         glow: "group-hover:shadow-[0_0_40px_-10px_rgba(52,211,153,0.4)]",
         iconBg: "bg-emerald-400/10 border-emerald-400/20",
@@ -43,15 +43,33 @@ const features = [
 ];
 
 const steps = [
-    { num: "01", title: "Paste Product URL", desc: "Drop any Amazon or Flipkart product link into the tracker. (e.g., https://amazon.in/dp/...)", icon: Sparkles },
-    { num: "02", title: "Set Target Price", desc: "Define the exact price point you are waiting for.", icon: Shield },
-    { num: "03", title: "Get Alerted", desc: "Sit back — we email you the instant the price drops.", icon: Zap },
+    { num: "01", title: "Paste Product URL", desc: "Drop any Amazon.in or Flipkart.com product link into the tracker to begin monitoring.", icon: Sparkles },
+    { num: "02", title: "Set Target Price (₹)", desc: "Define the exact INR price point you are waiting for. We watch the rest 24/7.", icon: Shield },
+    { num: "03", title: "Get Alerted Instantly", desc: "Receive a Discord or Email notification the moment the price drops below your target.", icon: Zap },
 ];
 
-const testimonials = [
-    { name: "Support Team", role: "URL Formatting", text: "For best results, copy the Amazon or Flipkart product URL from your browser and paste it directly into our tracker. Make sure it contains product ID (e.g. ASIN for Amazon).", rating: 5 },
-    { name: "Pro Tip", role: "Data Fetching", text: "Once you paste a product URL, our engine automatically fetches up to 6 months of external history from the store. Blank graphs mean the product is brand new.", rating: 5 },
-    { name: "Alert Setup", role: "Target Trigger", text: "Set your target price precisely. As soon as the price falls below the limit, we will instantly dispatch a notification to your email inbox.", rating: 5 },
+const tips = [
+    {
+        icon: ExternalLink,
+        iconColor: "text-cyan-400",
+        iconBg: "bg-cyan-400/10 border-cyan-400/20",
+        title: "Paste a Clean Product URL",
+        text: "Copy the product URL directly from your browser on Amazon.in or Flipkart.com. The best format is a direct /dp/ link for Amazon (e.g. amazon.in/dp/B09XJ3JJDD) or a /p/ link for Flipkart.",
+    },
+    {
+        icon: Clock,
+        iconColor: "text-purple-400",
+        iconBg: "bg-purple-500/10 border-purple-500/20",
+        title: "Price History Explained",
+        text: "When you track a product, RigRadar fetches up to 6 months of historical data from external indexers. A flat graph means the product is too new or no external history is available yet.",
+    },
+    {
+        icon: Info,
+        iconColor: "text-emerald-400",
+        iconBg: "bg-emerald-400/10 border-emerald-400/20",
+        title: "How to Get Discord Alerts",
+        text: "In your Discord server, go to Edit Channel → Integrations → Webhooks → New Webhook. Copy the webhook URL and paste it when selecting Discord as your notification method.",
+    },
 ];
 
 export default function Home() {
@@ -94,7 +112,7 @@ export default function Home() {
                     </h1>
 
                     <p className="text-lg md:text-xl text-slate-400 max-w-2xl leading-relaxed">
-                        Monitor tech hardware prices across Amazon & Flipkart. Get instant alerts when prices drop below your target and never overpay again.
+                        Monitor tech hardware prices across Amazon India & Flipkart. Get instant Discord or Email alerts when prices drop below your target — never overpay again.
                     </p>
 
                     <div className="flex flex-col sm:flex-row gap-4 mt-4 w-full sm:w-auto">
@@ -136,7 +154,7 @@ export default function Home() {
                                 <div className="w-3 h-3 rounded-full bg-emerald-400/60" />
                             </div>
                             <div className="flex-1 flex justify-center">
-                                <div className="bg-slate-800/50 rounded-lg px-16 py-1.5 text-xs text-slate-500 font-mono">rigr.adar/dashboard</div>
+                                <div className="bg-slate-800/50 rounded-lg px-16 py-1.5 text-xs text-slate-500 font-mono">rigradar.vercel.app/dashboard</div>
                             </div>
                         </div>
                         <div className="p-8 grid grid-cols-3 gap-6">
@@ -198,7 +216,8 @@ export default function Home() {
                             className="text-center"
                         >
                             <p className="text-3xl md:text-4xl font-bold text-white font-mono">{stat.value}</p>
-                            <p className="text-sm text-slate-500 mt-1">{stat.label}</p>
+                            <p className="text-sm text-slate-400 mt-1 font-medium">{stat.label}</p>
+                            <p className="text-xs text-slate-600 mt-0.5">{stat.sub}</p>
                         </motion.div>
                     ))}
                 </div>
@@ -283,12 +302,13 @@ export default function Home() {
                 >
                     <p className="text-sm font-medium text-emerald-400 mb-3 tracking-wider uppercase">Guides & Tips</p>
                     <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">How to Use <span className="text-gradient">RigRadar</span></h2>
+                    <p className="text-slate-400 max-w-2xl mx-auto text-lg">Everything you need to know to get the most out of your price trackers.</p>
                 </motion.div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {testimonials.map((t, i) => (
+                    {tips.map((tip, i) => (
                         <motion.div
-                            key={t.name}
+                            key={tip.title}
                             initial={{ opacity: 0, y: 30 }}
                             whileInView={{ opacity: 1, y: 0 }}
                             viewport={{ once: true }}
@@ -296,21 +316,11 @@ export default function Home() {
                             whileHover={{ y: -4 }}
                             className="glass rounded-2xl p-7 flex flex-col gap-4 card-shine"
                         >
-                            <div className="flex gap-1">
-                                {Array.from({ length: t.rating }).map((_, j) => (
-                                    <Star key={j} className="w-4 h-4 text-amber-400 fill-amber-400" />
-                                ))}
+                            <div className={`w-12 h-12 rounded-2xl ${tip.iconBg} flex items-center justify-center border`}>
+                                <tip.icon className={`w-6 h-6 ${tip.iconColor}`} />
                             </div>
-                            <p className="text-slate-300 leading-relaxed">&ldquo;{t.text}&rdquo;</p>
-                            <div className="flex items-center gap-3 mt-auto pt-4 border-t border-slate-800/50">
-                                <div className="w-10 h-10 rounded-full bg-linear-to-br from-cyan-400/20 to-purple-500/20 flex items-center justify-center text-sm font-semibold text-white">
-                                    {t.name.charAt(0)}
-                                </div>
-                                <div>
-                                    <p className="text-sm font-medium text-slate-200">{t.name}</p>
-                                    <p className="text-xs text-slate-500">{t.role}</p>
-                                </div>
-                            </div>
+                            <h3 className="text-lg font-semibold text-slate-200">{tip.title}</h3>
+                            <p className="text-slate-400 leading-relaxed text-sm">{tip.text}</p>
                         </motion.div>
                     ))}
                 </div>
@@ -327,7 +337,7 @@ export default function Home() {
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-96 bg-cyan-400/10 rounded-full blur-[100px] -z-10" />
                     <div className="relative z-10">
                         <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">Ready to Save on Your Next Build?</h2>
-                        <p className="text-slate-400 max-w-xl mx-auto text-lg mb-8">Join thousands of smart shoppers tracking tech prices across India. It&apos;s free to start.</p>
+                        <p className="text-slate-400 max-w-xl mx-auto text-lg mb-8">Track Amazon India & Flipkart tech prices in real-time. Start for free — no credit card required.</p>
                         <Link href="/dashboard">
                             <motion.div
                                 whileHover={{ scale: 1.03, y: -2 }}

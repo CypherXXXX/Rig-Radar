@@ -1,9 +1,21 @@
 import re
 from urllib.parse import urlparse
-from curl_cffi import requests as curl_requests
+import httpx
 from bs4 import BeautifulSoup
 import json
 from typing import Optional
+
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Cache-Control": "no-cache",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Upgrade-Insecure-Requests": "1",
+}
 
 STORE_DETECTION_PATTERNS = {
     "amazon": ["amazon.com", "amazon.in", "amazon.co.uk"],
@@ -22,16 +34,7 @@ def detect_store(url: str) -> Optional[str]:
     return None
 
 def fetch_page_html(url: str) -> str:
-    response = curl_requests.get(
-        url,
-        impersonate="chrome120",
-        timeout=20,
-        headers={
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
-            "Cache-Control": "no-cache",
-        },
-    )
+    response = httpx.get(url, timeout=20, headers=BROWSER_HEADERS, follow_redirects=True)
     response.raise_for_status()
     return response.text
 
@@ -213,7 +216,7 @@ def extract_image(soup: BeautifulSoup, store: str) -> Optional[str]:
         element = soup.select_one(pattern["selector"])
         if element:
             image_url = element.get(pattern.get("attr", "src"))
-            if image_url and not "placeholder" in image_url.lower():
+            if image_url and "placeholder" not in image_url.lower():
                 if store == "amazon":
                     image_url = re.sub(r"\._[A-Z]+\d+_", "._SL500_", image_url)
                 return image_url

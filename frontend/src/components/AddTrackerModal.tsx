@@ -208,11 +208,12 @@ export default function AddTrackerModal({ isOpen, onClose, onSuccess }: AddTrack
                                         placeholder={method === "email" ? "you@example.com" : "https://discord.com/api/webhooks/..."}
                                         className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-cyan-400/40 focus:ring-1 focus:ring-cyan-400/20 transition-all"
                                         disabled={loading}
+                                        required={method === "discord"}
                                     />
                                     <p className="text-xs text-slate-600 mt-1.5">
                                         {method === "email"
                                             ? "Leave blank to use your account email."
-                                            : "Paste your Discord webhook URL for notifications."}
+                                            : "In Discord: Edit Channel → Integrations → Webhooks → New Webhook → Copy URL."}
                                     </p>
                                 </div>
 
