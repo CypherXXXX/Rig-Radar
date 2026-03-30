@@ -2,7 +2,7 @@ import re
 import json
 import random
 import requests
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 from typing import Optional
 from bs4 import BeautifulSoup
 
@@ -11,6 +11,12 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+]
+
+MOBILE_USER_AGENTS = [
+    "Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
 ]
 
 STORE_DETECTION_PATTERNS = {
@@ -28,8 +34,8 @@ def detect_store(url: str) -> Optional[str]:
                 return store
     return None
 
-def _get_headers(referer: str = "") -> dict:
-    ua = random.choice(USER_AGENTS)
+def _get_headers(referer: str = "", mobile: bool = False) -> dict:
+    ua = random.choice(MOBILE_USER_AGENTS if mobile else USER_AGENTS)
     h = {
         "User-Agent": ua,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -43,22 +49,23 @@ def _get_headers(referer: str = "") -> dict:
         "Sec-Fetch-Mode": "navigate",
         "Sec-Fetch-Site": "none",
         "Sec-Fetch-User": "?1",
-        "Sec-CH-UA": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-        "Sec-CH-UA-Mobile": "?0",
-        "Sec-CH-UA-Platform": '"Windows"',
     }
+    if not mobile:
+        h["Sec-CH-UA"] = '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"'
+        h["Sec-CH-UA-Mobile"] = "?0"
+        h["Sec-CH-UA-Platform"] = '"Windows"'
     if referer:
         h["Referer"] = referer
         h["Sec-Fetch-Site"] = "same-origin"
     return h
 
-def _safe_get(url: str, referer: str = "", timeout: int = 20) -> Optional[requests.Response]:
+def _safe_get(url: str, referer: str = "", timeout: int = 20, mobile: bool = False) -> Optional[requests.Response]:
     session = requests.Session()
-    session.headers.update(_get_headers(referer))
+    session.headers.update(_get_headers(referer, mobile))
     for attempt in range(3):
         try:
             if attempt > 0:
-                session.headers.update(_get_headers(referer))
+                session.headers.update(_get_headers(referer, mobile))
             r = session.get(url, timeout=timeout, allow_redirects=True)
             r.raise_for_status()
             return r
@@ -163,14 +170,29 @@ PRICE_SELECTORS = {
     ],
     "newegg": ["li.price-current", ".price-current strong"],
     "bestbuy": [".priceView-customer-price span"],
-    "flipkart": ["div.Nx9bqj", "div._30jeq3", "div._1vC4OE"],
+    "flipkart": [
+        "div.Nx9bqj.CxhGGd",
+        "div.Nx9bqj",
+        "div._30jeq3._16Jk6d",
+        "div._30jeq3",
+        "div._25b18c span",
+        "div.CEmiEU div.UOCQB1",
+        "div._1vC4OE._3qQ9m1",
+        "div._1vC4OE",
+    ],
 }
 
 TITLE_SELECTORS = {
     "amazon": ["#productTitle", "h1#title span"],
     "newegg": [".product-title"],
     "bestbuy": [".sku-title h1", ".sku-title"],
-    "flipkart": ["span.VU-ZEz", "span.B_NuCI", "h1._9E25nV"],
+    "flipkart": [
+        "span.VU-ZEz",
+        "h1.yhB1nd",
+        "span.B_NuCI",
+        "h1._9E25nV",
+        "h1.s1Q9rs",
+    ],
 }
 
 IMAGE_SELECTORS = {
@@ -183,8 +205,11 @@ IMAGE_SELECTORS = {
     "newegg": [{"s": ".product-view-img-original", "a": "src"}],
     "bestbuy": [{"s": ".primary-image", "a": "src"}],
     "flipkart": [
+        {"s": "img._396cs4._2amPTt._3qGmMb", "a": "src"},
         {"s": "img._396cs4", "a": "src"},
+        {"s": "img.DByuf4.IZexXJ.jLEJ7H", "a": "src"},
         {"s": "img.DByuf4", "a": "src"},
+        {"s": "img._2r_T1I", "a": "src"},
         {"s": "img.qqDXDz", "a": "src"},
     ],
 }
@@ -226,6 +251,158 @@ def _amazon_image_from_script(soup: BeautifulSoup) -> Optional[str]:
             if m:
                 return m.group(1)
     return None
+
+def _flipkart_mobile_scrape(url: str) -> dict:
+    mobile_url = url.replace("www.flipkart.com", "m.flipkart.com")
+    r = _safe_get(mobile_url, mobile=True)
+    if not r:
+        return {}
+
+    result = {}
+    try:
+        soup = BeautifulSoup(r.text, "lxml")
+
+        jd = _jsonld_product(soup)
+        if jd:
+            offers = jd.get("offers", {})
+            if isinstance(offers, list) and offers:
+                offers = offers[0]
+            if isinstance(offers, dict):
+                for f in ("price", "lowPrice"):
+                    v = offers.get(f)
+                    if v:
+                        try:
+                            p = float(v)
+                            if p > 0:
+                                result["price"] = p
+                                break
+                        except (ValueError, TypeError):
+                            pass
+            if jd.get("name"):
+                result["name"] = jd["name"][:200]
+            img = jd.get("image")
+            if isinstance(img, str):
+                result["image"] = img
+            elif isinstance(img, list) and img:
+                result["image"] = img[0]
+            elif isinstance(img, dict):
+                result["image"] = img.get("url")
+
+        if not result.get("price"):
+            for sel in PRICE_SELECTORS.get("flipkart", []):
+                el = soup.select_one(sel)
+                if el:
+                    p = _parse_price(el.get_text())
+                    if p and p > 0:
+                        result["price"] = p
+                        break
+
+        if not result.get("name"):
+            og_title = soup.find("meta", property="og:title")
+            if og_title and og_title.get("content"):
+                t = re.sub(r"\s*[-|:]\s*(Flipkart).*$", "", og_title["content"], flags=re.IGNORECASE).strip()
+                if t and len(t) > 5:
+                    result["name"] = t[:200]
+
+        if not result.get("name"):
+            for sel in TITLE_SELECTORS.get("flipkart", []):
+                el = soup.select_one(sel)
+                if el:
+                    t = el.get_text().strip()
+                    if t:
+                        result["name"] = t[:200]
+                        break
+
+        if not result.get("image"):
+            og_img = soup.find("meta", property="og:image")
+            if og_img and og_img.get("content") and "placeholder" not in og_img["content"].lower():
+                result["image"] = og_img["content"]
+
+        if not result.get("image"):
+            for cfg in IMAGE_SELECTORS.get("flipkart", []):
+                el = soup.select_one(cfg["s"])
+                if el:
+                    src = el.get(cfg["a"])
+                    if src and "placeholder" not in src.lower():
+                        result["image"] = src
+                        break
+    except Exception:
+        pass
+
+    return result
+
+def _flipkart_jsonld_from_page(url: str) -> dict:
+    r = _safe_get(url)
+    if not r:
+        return {}
+    result = {}
+    try:
+        soup = BeautifulSoup(r.text, "lxml")
+        jd = _jsonld_product(soup)
+        if jd:
+            offers = jd.get("offers", {})
+            if isinstance(offers, list) and offers:
+                offers = offers[0]
+            if isinstance(offers, dict):
+                for f in ("price", "lowPrice"):
+                    v = offers.get(f)
+                    if v:
+                        try:
+                            p = float(v)
+                            if p > 0:
+                                result["price"] = p
+                                break
+                        except (ValueError, TypeError):
+                            pass
+            if jd.get("name"):
+                result["name"] = jd["name"][:200]
+            img = jd.get("image")
+            if isinstance(img, str):
+                result["image"] = img
+            elif isinstance(img, list) and img:
+                result["image"] = img[0]
+            elif isinstance(img, dict):
+                result["image"] = img.get("url")
+
+        if not result.get("name"):
+            og_title = soup.find("meta", property="og:title")
+            if og_title and og_title.get("content"):
+                t = re.sub(r"\s*[-|:]\s*(Flipkart).*$", "", og_title["content"], flags=re.IGNORECASE).strip()
+                if t and len(t) > 5:
+                    result["name"] = t[:200]
+
+        if not result.get("image"):
+            og_img = soup.find("meta", property="og:image")
+            if og_img and og_img.get("content") and "placeholder" not in og_img["content"].lower():
+                result["image"] = og_img["content"]
+
+        if not result.get("price"):
+            for sel in PRICE_SELECTORS.get("flipkart", []):
+                el = soup.select_one(sel)
+                if el:
+                    p = _parse_price(el.get_text())
+                    if p and p > 0:
+                        result["price"] = p
+                        break
+        if not result.get("name"):
+            for sel in TITLE_SELECTORS.get("flipkart", []):
+                el = soup.select_one(sel)
+                if el:
+                    t = el.get_text().strip()
+                    if t:
+                        result["name"] = t[:200]
+                        break
+        if not result.get("image"):
+            for cfg in IMAGE_SELECTORS.get("flipkart", []):
+                el = soup.select_one(cfg["s"])
+                if el:
+                    src = el.get(cfg["a"])
+                    if src and "placeholder" not in src.lower():
+                        result["image"] = src
+                        break
+    except Exception:
+        pass
+    return result
 
 def _fallback_scrape(url: str, store: str) -> dict:
     r = _safe_get(url)
@@ -319,7 +496,18 @@ def extract_product_metadata(url: str) -> dict:
             image = _ph_extract_image(ph_html)
             price = _ph_extract_price(ph_html)
 
-    if not (name and image and price):
+    if store == "flipkart" and not (name and image and price):
+        mobile_data = _flipkart_mobile_scrape(url)
+        name = name or mobile_data.get("name")
+        image = image or mobile_data.get("image")
+        price = price or mobile_data.get("price")
+
+        if not (name and image and price):
+            desktop_data = _flipkart_jsonld_from_page(url)
+            name = name or desktop_data.get("name")
+            image = image or desktop_data.get("image")
+            price = price or desktop_data.get("price")
+    elif not (name and image and price):
         fb = _fallback_scrape(url, store)
         name = name or fb.get("name")
         image = image or fb.get("image")

@@ -195,29 +195,36 @@ async def get_analytics(
     if current and current > 0:
         all_prices.append(current)
 
-    valid_scraped = (
-        scraped_stats.get("highest")
-        and scraped_stats.get("lowest")
-        and scraped_stats["lowest"] > 0
-        and scraped_stats["highest"] > 0
-        and scraped_stats["lowest"] <= scraped_stats["highest"]
-    )
-
-    if valid_scraped and current and current > 0:
-        if scraped_stats["lowest"] < current * 0.10 or scraped_stats["highest"] > current * 5.0:
-            valid_scraped = False
-
-    if valid_scraped:
-        avg = scraped_stats.get("average")
-        if not avg or avg <= 0:
-            avg = round(sum(all_prices) / len(all_prices), 2) if all_prices else current
-        stats = {
-            "current": current,
-            "lowest": scraped_stats["lowest"],
-            "highest": scraped_stats["highest"],
-            "average": avg,
-            "data_points": len(deduplicated),
-        }
+    if scraped_stats.get("highest") and scraped_stats.get("lowest"):
+        h = scraped_stats["highest"]
+        l = scraped_stats["lowest"]
+        if l > 0 and h > 0 and l <= h:
+            avg = scraped_stats.get("average")
+            if not avg or avg <= 0:
+                avg = round(sum(all_prices) / len(all_prices), 2) if all_prices else current
+            stats = {
+                "current": current,
+                "lowest": l,
+                "highest": h,
+                "average": avg,
+                "data_points": len(deduplicated),
+            }
+        elif all_prices:
+            stats = {
+                "current": current,
+                "lowest": min(all_prices),
+                "highest": max(all_prices),
+                "average": round(sum(all_prices) / len(all_prices), 2),
+                "data_points": len(deduplicated),
+            }
+        else:
+            stats = {
+                "current": current,
+                "lowest": current,
+                "highest": current,
+                "average": current,
+                "data_points": 1 if current and current > 0 else 0,
+            }
     elif all_prices:
         stats = {
             "current": current,
@@ -292,6 +299,46 @@ async def get_trending():
 async def get_trending_tech(force: bool = False):
     try:
         products = get_trending_products(force_refresh=force)
-        return {"data": products, "message": "Trending tech products", "success": True}
+        if products:
+            return {"data": products, "message": "Trending tech products", "success": True}
+
+        deals = db_get_trending_deals()
+        if deals:
+            converted = []
+            for deal in deals:
+                converted.append({
+                    "id": deal.get("item_id", ""),
+                    "name": deal.get("product_name", "Unknown"),
+                    "image": deal.get("product_image_url", ""),
+                    "url": deal.get("product_url", ""),
+                    "store": deal.get("store", "Amazon").capitalize(),
+                    "price": deal.get("current_price", 0),
+                    "originalPrice": deal.get("previous_price", 0),
+                    "discount": deal.get("drop_percentage", 0),
+                    "rating": 0.0,
+                    "reviews": 0,
+                    "category": "Deal",
+                })
+            return {"data": converted, "message": "Trending from cache", "success": True}
+
+        return {"data": [], "message": "No trending products available", "success": True}
     except Exception as e:
+        deals = db_get_trending_deals()
+        if deals:
+            converted = []
+            for deal in deals:
+                converted.append({
+                    "id": deal.get("item_id", ""),
+                    "name": deal.get("product_name", "Unknown"),
+                    "image": deal.get("product_image_url", ""),
+                    "url": deal.get("product_url", ""),
+                    "store": deal.get("store", "Amazon").capitalize(),
+                    "price": deal.get("current_price", 0),
+                    "originalPrice": deal.get("previous_price", 0),
+                    "discount": deal.get("drop_percentage", 0),
+                    "rating": 0.0,
+                    "reviews": 0,
+                    "category": "Deal",
+                })
+            return {"data": converted, "message": "Trending from cache", "success": True}
         return {"data": [], "message": f"Error: {str(e)}", "success": False}

@@ -14,22 +14,20 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 ]
 
-CACHE_TTL = 86400
+CACHE_TTL = 3600
 
 _cache: dict = {"data": [], "timestamp": 0}
 
-AMAZON_BESTSELLER_URLS = [
-    ("https://www.amazon.in/gp/bestsellers/computers/1375424031", "GPU"),
-    ("https://www.amazon.in/gp/bestsellers/computers/1375378031", "CPU"),
-    ("https://www.amazon.in/gp/bestsellers/computers/1375380031", "RAM"),
-    ("https://www.amazon.in/gp/bestsellers/computers/1375382031", "SSD"),
-    ("https://www.amazon.in/gp/bestsellers/computers/1375398031", "Monitor"),
-    ("https://www.amazon.in/gp/bestsellers/computers/1375406031", "Keyboard"),
-    ("https://www.amazon.in/gp/bestsellers/computers/1375408031", "Mouse"),
-    ("https://www.amazon.in/gp/bestsellers/computers/1375400031", "Headset"),
+AMAZON_SEED_ASINS = [
+    ("B0CZLGTFMF", "GPU", "amazon"),
+    ("B0D5J3D27K", "CPU", "amazon"),
+    ("B09HN37XDX", "SSD", "amazon"),
+    ("B07XVMDJQW", "Monitor", "amazon"),
+    ("B09HSCSQYJ", "Keyboard", "amazon"),
+    ("B09NVPTQPM", "Headset", "amazon"),
+    ("B08N5WRWNW", "Mouse", "amazon"),
+    ("B0C7K5N42C", "RAM", "amazon"),
 ]
-
-AMAZON_DEALS_URL = "https://www.amazon.in/gp/deals"
 
 FLIPKART_SEED_URLS = [
     "https://www.flipkart.com/apple-iphone-15-blue-128-gb/p/itm6e3d0ab408a24",
@@ -38,12 +36,19 @@ FLIPKART_SEED_URLS = [
     "https://www.flipkart.com/dell-inspiron-3520-intel-core-i5-1235u-8-gb-512-gb-ssd-windows-11-home-d560896win9b-thin-light-laptop/p/itm0567f562d1f5b",
     "https://www.flipkart.com/redmi-note-13-pro-fusion-white-256-gb/p/itm1e7a3ce4d1ce0",
     "https://www.flipkart.com/sony-wh-1000xm5-bluetooth-headset/p/itm9c2dc7bf3d0f2",
-    "https://www.flipkart.com/samsung-65-cm-26-inch-full-hd-led-smart-television/p/itm03b1bebd4dcfe",
     "https://www.flipkart.com/one-plus-nord-ce-4-lite-5g-mega-blue-128-gb/p/itmd8f5186f86eae",
     "https://www.flipkart.com/lg-108-cm-43-inch-ultra-hd-4k-led-smart-oled-tv/p/itm1c18eb1f5c26a",
     "https://www.flipkart.com/boult-audio-airbass-propods-x-tws/p/itm7d8d8c3f1e3b2",
-    "https://www.flipkart.com/hp-omen-16-ryzen-7-7745hx-16-gb-1-tb-ssd-windows-11-gaming-laptop/p/itm9c8d0c8e9d1a2",
-    "https://www.flipkart.com/mi-smart-band-8-active/p/itm4c7b7c0d3c1e8",
+]
+
+AMAZON_BESTSELLER_URLS = [
+    ("https://www.amazon.in/gp/bestsellers/computers/1375424031", "GPU"),
+    ("https://www.amazon.in/gp/bestsellers/computers/1375378031", "CPU"),
+    ("https://www.amazon.in/gp/bestsellers/computers/1375382031", "SSD"),
+    ("https://www.amazon.in/gp/bestsellers/computers/1375398031", "Monitor"),
+    ("https://www.amazon.in/gp/bestsellers/computers/1375406031", "Keyboard"),
+    ("https://www.amazon.in/gp/bestsellers/computers/1375408031", "Mouse"),
+    ("https://www.amazon.in/gp/bestsellers/computers/1375400031", "Headset"),
 ]
 
 def _get_headers(referer: str = "") -> dict:
@@ -153,6 +158,38 @@ def _parse_price(text: str) -> Optional[float]:
     except ValueError:
         return None
 
+def _process_amazon_seed(asin: str, category: str) -> Optional[dict]:
+    product_url = f"https://www.amazon.in/dp/{asin}"
+    try:
+        ph = _ph_search(product_url)
+        if not ph.get("slug"):
+            return None
+        page_data = _ph_page_data(ph["slug"])
+        if not page_data.get("current_price"):
+            return None
+
+        current = page_data["current_price"]
+        highest = page_data.get("highest_price") or current
+        if highest < current:
+            highest = current
+        discount = round(((highest - current) / highest) * 100) if highest > current else 0
+
+        return {
+            "id": _make_id(product_url),
+            "name": ph.get("name", "Unknown Product")[:150],
+            "image": page_data.get("image", ""),
+            "url": product_url,
+            "store": "Amazon",
+            "price": current,
+            "originalPrice": highest,
+            "discount": discount,
+            "rating": 0.0,
+            "reviews": 0,
+            "category": category,
+        }
+    except Exception:
+        return None
+
 def _scrape_amazon_bestseller(url: str, category: str) -> Optional[dict]:
     html = _fetch(url)
     if not html:
@@ -198,7 +235,7 @@ def _scrape_amazon_bestseller(url: str, category: str) -> Optional[dict]:
                 "store": "Amazon",
                 "price": price,
                 "originalPrice": round(price * 1.15, 2),
-                "discount": 0,
+                "discount": 13,
                 "rating": 0.0,
                 "reviews": 0,
                 "category": category,
@@ -207,134 +244,36 @@ def _scrape_amazon_bestseller(url: str, category: str) -> Optional[dict]:
             continue
     return None
 
-def _get_amazon_deals() -> list[dict]:
-    html = _fetch(AMAZON_DEALS_URL)
-    if not html:
-        return []
-    soup = BeautifulSoup(html, "lxml")
-    products = []
-
-    cards = soup.select("div[data-component-type='s-search-result']") or soup.select(".DealCard-module__dealCard")
-    for card in cards[:20]:
-        try:
-            name_el = card.select_one("h2 a span") or card.select_one("span.a-size-base-plus")
-            if not name_el:
-                continue
-            name = name_el.get_text(strip=True)
-            if not name or len(name) < 8:
-                continue
-
-            price_el = card.select_one("span.a-price span.a-offscreen") or card.select_one("span.a-price-whole")
-            if not price_el:
-                continue
-            price = _parse_price(price_el.get_text())
-            if not price or price < 500:
-                continue
-
-            orig_el = card.select_one("span.a-text-price span.a-offscreen")
-            original = _parse_price(orig_el.get_text()) if orig_el else price
-            if not original or original < price:
-                original = price
-            discount = round(((original - price) / original) * 100) if original > price else 0
-
-            img_el = card.select_one("img.s-image") or card.select_one("img")
-            image = img_el.get("src", "") if img_el else ""
-            if not image:
-                continue
-
-            link_el = card.select_one("a[href*='/dp/']")
-            if not link_el:
-                continue
-            dp_m = re.search(r"/dp/([A-Z0-9]{10})", link_el.get("href", ""))
-            if not dp_m:
-                continue
-            product_url = f"https://www.amazon.in/dp/{dp_m.group(1)}"
-
-            products.append({
-                "id": _make_id(product_url),
-                "name": name[:150],
-                "image": image,
-                "url": product_url,
-                "store": "Amazon",
-                "price": price,
-                "originalPrice": original,
-                "discount": discount,
-                "rating": 0.0,
-                "reviews": 0,
-                "category": "Deal",
-            })
-            if len(products) >= 5:
-                break
-        except Exception:
-            continue
-    return products
-
-def _get_amazon_trending(count: int = 5) -> list[dict]:
-    products = _get_amazon_deals()
-    if len(products) >= count:
-        return products[:count]
-
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = {pool.submit(_scrape_amazon_bestseller, url, cat): cat for url, cat in AMAZON_BESTSELLER_URLS}
-        for future in as_completed(futures):
-            try:
-                result = future.result(timeout=25)
-                if result and result["id"] not in {p["id"] for p in products}:
-                    products.append(result)
-                    if len(products) >= count:
-                        break
-            except Exception:
-                pass
-
-    return products[:count]
-
-def _get_flipkart_trending(count: int = 5) -> list[dict]:
-    products = []
-
-    def _process_flipkart_seed(url: str) -> Optional[dict]:
-        try:
-            ph = _ph_search(url)
-            if not ph.get("slug"):
-                return None
-            page_data = _ph_page_data(ph["slug"])
-            if not page_data.get("image") or not page_data.get("current_price"):
-                return None
-
-            current = page_data["current_price"]
-            highest = page_data.get("highest_price") or current
-            if highest < current:
-                highest = current
-            discount = round(((highest - current) / highest) * 100) if highest > current else 0
-
-            return {
-                "id": _make_id(url),
-                "name": ph.get("name", "Unknown Product")[:150],
-                "image": page_data["image"],
-                "url": url,
-                "store": "Flipkart",
-                "price": current,
-                "originalPrice": highest,
-                "discount": discount,
-                "rating": 0.0,
-                "reviews": 0,
-                "category": "Deal",
-            }
-        except Exception:
+def _process_flipkart_seed(url: str) -> Optional[dict]:
+    try:
+        ph = _ph_search(url)
+        if not ph.get("slug"):
+            return None
+        page_data = _ph_page_data(ph["slug"])
+        if not page_data.get("image") or not page_data.get("current_price"):
             return None
 
-    with ThreadPoolExecutor(max_workers=5) as pool:
-        futures = {pool.submit(_process_flipkart_seed, url): url for url in FLIPKART_SEED_URLS}
-        results = []
-        for future in as_completed(futures):
-            try:
-                result = future.result(timeout=20)
-                if result:
-                    results.append(result)
-            except Exception:
-                pass
+        current = page_data["current_price"]
+        highest = page_data.get("highest_price") or current
+        if highest < current:
+            highest = current
+        discount = round(((highest - current) / highest) * 100) if highest > current else 0
 
-    results.sort(key=lambda x: x.get("discount", 0), reverse=True)
-    return results[:count]
+        return {
+            "id": _make_id(url),
+            "name": ph.get("name", "Unknown Product")[:150],
+            "image": page_data["image"],
+            "url": url,
+            "store": "Flipkart",
+            "price": current,
+            "originalPrice": highest,
+            "discount": discount,
+            "rating": 0.0,
+            "reviews": 0,
+            "category": "Deal",
+        }
+    except Exception:
+        return None
 
 def get_trending_products(force_refresh: bool = False) -> list[dict]:
     global _cache
@@ -342,13 +281,53 @@ def get_trending_products(force_refresh: bool = False) -> list[dict]:
     if not force_refresh and _cache["data"] and (now - _cache["timestamp"]) < CACHE_TTL:
         return _cache["data"]
 
-    amazon_products = _get_amazon_trending(5)
-    flipkart_products = _get_flipkart_trending(5)
+    products = []
 
-    result = amazon_products + flipkart_products
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        seed_futures = {
+            pool.submit(_process_amazon_seed, asin, cat): f"amazon_{asin}"
+            for asin, cat, _ in AMAZON_SEED_ASINS
+        }
+        for future in as_completed(seed_futures):
+            try:
+                result = future.result(timeout=20)
+                if result and result["id"] not in {p["id"] for p in products}:
+                    products.append(result)
+            except Exception:
+                pass
 
-    if result:
-        _cache["data"] = result
+    if len(products) < 3:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            bs_futures = {
+                pool.submit(_scrape_amazon_bestseller, url, cat): cat
+                for url, cat in AMAZON_BESTSELLER_URLS
+            }
+            for future in as_completed(bs_futures):
+                try:
+                    result = future.result(timeout=25)
+                    if result and result["id"] not in {p["id"] for p in products}:
+                        products.append(result)
+                        if len(products) >= 5:
+                            break
+                except Exception:
+                    pass
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        fk_futures = {pool.submit(_process_flipkart_seed, url): url for url in FLIPKART_SEED_URLS}
+        fk_results = []
+        for future in as_completed(fk_futures):
+            try:
+                result = future.result(timeout=20)
+                if result:
+                    fk_results.append(result)
+            except Exception:
+                pass
+
+    fk_results.sort(key=lambda x: x.get("discount", 0), reverse=True)
+    products.extend(fk_results[:5])
+
+    if products:
+        _cache["data"] = products
         _cache["timestamp"] = now
 
-    return result
+    return products
