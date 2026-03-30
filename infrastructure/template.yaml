@@ -85,7 +85,7 @@ Resources:
       Handler: main.handler
       CodeUri: ../backend/
       Timeout: 30
-      MemorySize: 256
+      MemorySize: 512
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackedItemsTable

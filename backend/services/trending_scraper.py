@@ -2,16 +2,16 @@ import re
 import time
 import hashlib
 from typing import Optional
-import httpx
+from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup
 import json
 
 BROWSER_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
+    "Accept-Language": "en-IN,en-US;q=0.9,en;q=0.8,hi;q=0.7",
     "Accept-Encoding": "gzip, deflate, br",
     "Cache-Control": "no-cache",
+    "Upgrade-Insecure-Requests": "1",
 }
 
 AMAZON_SEARCH_URLS = [
@@ -33,9 +33,22 @@ _cache: dict = {"data": [], "timestamp": 0}
 CACHE_TTL = 3600
 
 def _fetch_html(url: str) -> str:
-    response = httpx.get(url, timeout=20, headers=BROWSER_HEADERS, follow_redirects=True)
-    response.raise_for_status()
-    return response.text
+    profiles = ["chrome120", "chrome110", "safari17_0"]
+    last_error = None
+    for profile in profiles:
+        try:
+            response = cffi_requests.get(
+                url,
+                headers=BROWSER_HEADERS,
+                impersonate=profile,
+                timeout=20,
+                allow_redirects=True,
+            )
+            response.raise_for_status()
+            return response.text
+        except Exception as e:
+            last_error = e
+    raise last_error
 
 def _generate_id(text: str) -> str:
     return hashlib.md5(text.encode()).hexdigest()[:16]

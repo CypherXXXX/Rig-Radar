@@ -48,7 +48,7 @@ RigRadar uses a highly scalable, decoupled architecture split between a React-ba
 ### Backend API
 - **Web Framework - `FastAPI (Python)`**: Acts as the rapid, type-safe engine powering the core network requests. FastAPI ensures that routing, API parsing via Pydantic, and request parallelization are highly optimized.
 - **Database - `AWS DynamoDB`**: A Serverless NoSQL cloud database integrated via `boto3`. Hand-picked for its lightning-fast read/write capacities during heavy simultaneous price polling and scaling dynamically without maintaining instances.
-- **HTTP Scraping - `HTTPX` & `BeautifulSoup4`**: `httpx` is used for fast, async-compatible HTTP requests to Amazon and Flipkart. `BeautifulSoup4` with the `lxml` parser extracts structured product metadata (name, price, image) from the raw HTML response.
+- **HTTP Scraping - `curl_cffi` & `BeautifulSoup4`**: `curl_cffi` is used for imitating real browser TLS fingerprints to bypass Amazon and Flipkart bot detections. `BeautifulSoup4` with the `lxml` parser extracts structured product metadata (name, price, image) from the raw HTML response.
 
 ### Infrastructure & Workers
 - **Background Cron Jobs - `AWS SAM & Lambda`**: The `worker/` directory contains handlers (like `scraper.py` and `notifier.py`) deployed as serverless functions. They wake up on a **30-minute cron schedule**, sweep the DynamoDB table for active trackers, check live prices concurrently, and terminate after completion — meaning zero idle server costs.
@@ -93,7 +93,7 @@ RigRadar/
 How does RigRadar perform its magic under the hood?
 
 1. **User Action:** You open the web application, log in using Clerk, paste an Amazon.in or Flipkart.com link into the **Add Tracker Modal**, choose Discord or Email as your notification method, and define your desired target price (e.g., ₹25,000).
-2. **Metadata Extraction:** The Next.js frontend shoots a secure REST payload to the FastAPI backend. The API uses `httpx` to fetch the product page and `BeautifulSoup4` to parse the product title, image, and current live price.
+2. **Metadata Extraction:** The Next.js frontend shoots a secure REST payload to the FastAPI backend. The API uses `curl_cffi` to fetch the product page via browser TLS spoofing and `BeautifulSoup4` to parse the product title, image, and current live price.
 3. **Database Injection:** The newly parsed and sanitized tracking configuration, tied directly to your Clerk User ID, is written instantly to an active partition inside the AWS DynamoDB table.
 4. **Historical Graph Generation:** Immediately upon creating or viewing a tracked product, the backend accesses the `pricehistory.app` external indexer to retrieve up to 6 months of historical pricing data. If external data is unavailable, a statistically plausible synthetic price curve is generated from the current price.
 5. **Continuous Background Polling:** Every **30 minutes**, a detached AWS Lambda worker automatically wakes up. It fetches all active trackers across the DynamoDB table and runs high-concurrency price checks using domain-grouped batching with exponential backoff and jitter.

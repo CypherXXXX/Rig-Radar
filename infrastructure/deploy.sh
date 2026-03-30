@@ -11,7 +11,7 @@ echo "=========================================="
 
 echo "Building SAM application..."
 cd infrastructure
-sam build --template-file template.yaml
+sam build --use-container --template-file template.yaml
 
 echo "Deploying SAM application..."
 sam deploy

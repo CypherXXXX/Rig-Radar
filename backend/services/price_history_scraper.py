@@ -5,7 +5,8 @@ import hashlib
 import json
 import time as _time
 from typing import Optional
-import httpx
+from curl_cffi import requests as cffi_requests
+from curl_cffi.requests import Session as CffiSession
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 
@@ -34,9 +35,22 @@ def extract_asin(url: str) -> Optional[str]:
     return None
 
 def _fetch_page(url: str, timeout: int = 20) -> str:
-    response = httpx.get(url, timeout=timeout, headers=BROWSER_HEADERS, follow_redirects=True)
-    response.raise_for_status()
-    return response.text
+    profiles = ["chrome120", "chrome110", "safari17_0"]
+    last_error = None
+    for profile in profiles:
+        try:
+            response = cffi_requests.get(
+                url,
+                headers=BROWSER_HEADERS,
+                impersonate=profile,
+                timeout=timeout,
+                allow_redirects=True,
+            )
+            response.raise_for_status()
+            return response.text
+        except Exception as e:
+            last_error = e
+    raise last_error
 
 def _parse_inr_price(text: str) -> Optional[float]:
     cleaned = re.sub(r"[^\d.,]", "", text.strip())
@@ -60,9 +74,9 @@ def _find_product_slug(asin: Optional[str], product_url: str = "") -> Optional[s
         amazon_url = f"https://www.amazon.in/dp/{dp_match.group(1)}"
 
     try:
-        with httpx.Client(follow_redirects=True, timeout=15) as client:
-            client.get("https://pricehistory.app", timeout=10)
-            resp = client.post(
+        with CffiSession(impersonate="chrome110") as session:
+            session.get("https://pricehistory.app", timeout=10)
+            resp = session.post(
                 "https://pricehistory.app/api/search",
                 json={"url": amazon_url},
                 timeout=15,

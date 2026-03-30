@@ -1,24 +1,20 @@
 import re
 from urllib.parse import urlparse
-import httpx
+from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup
 import json
 from typing import Optional
 
-BROWSER_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+SCRAPE_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
+    "Accept-Language": "en-IN,en-US;q=0.9,en;q=0.8,hi;q=0.7",
     "Accept-Encoding": "gzip, deflate, br",
     "Cache-Control": "no-cache",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
     "Upgrade-Insecure-Requests": "1",
 }
 
 STORE_DETECTION_PATTERNS = {
-    "amazon": ["amazon.com", "amazon.in", "amazon.co.uk"],
+    "amazon": ["amazon.com", "amazon.in", "amazon.co.uk", "amzn.in", "amzn.com"],
     "newegg": ["newegg.com"],
     "bestbuy": ["bestbuy.com"],
     "flipkart": ["flipkart.com"],
@@ -34,9 +30,22 @@ def detect_store(url: str) -> Optional[str]:
     return None
 
 def fetch_page_html(url: str) -> str:
-    response = httpx.get(url, timeout=20, headers=BROWSER_HEADERS, follow_redirects=True)
-    response.raise_for_status()
-    return response.text
+    profiles = ["chrome120", "chrome110", "safari17_0", "chrome107"]
+    last_error = None
+    for profile in profiles:
+        try:
+            response = cffi_requests.get(
+                url,
+                headers=SCRAPE_HEADERS,
+                impersonate=profile,
+                timeout=25,
+                allow_redirects=True,
+            )
+            response.raise_for_status()
+            return response.text
+        except Exception as e:
+            last_error = e
+    raise last_error
 
 def extract_og_image(soup: BeautifulSoup) -> Optional[str]:
     og_tag = soup.find("meta", property="og:image")
@@ -107,6 +116,10 @@ PRICE_PATTERNS = {
         {"selector": "div._1vC4OE", "type": "text"},
         {"selector": "div.Nx9bqj", "type": "text"},
         {"selector": "div.CEmiEU div", "type": "text"},
+        {"selector": "div._16Jk6d", "type": "text"},
+        {"selector": "div.hl05eU div.Nx9bqj", "type": "text"},
+        {"selector": "div.yRaY8j", "type": "text"},
+        {"selector": "div._25b18c div", "type": "text"},
     ],
 }
 
@@ -118,6 +131,7 @@ TITLE_PATTERNS = {
         {"selector": "span.VU-ZEz", "type": "text"},
         {"selector": "span.B_NuCI", "type": "text"},
         {"selector": "h1._9E25nV", "type": "text"},
+        {"selector": "h1.yhB1nd", "type": "text"},
     ],
 }
 
@@ -139,6 +153,7 @@ IMAGE_PATTERNS = {
         {"selector": "img._2r_T1I", "attr": "src"},
         {"selector": "div._3kidJX img", "attr": "src"},
         {"selector": "img.DByuf4", "attr": "src"},
+        {"selector": "img.qqDXDz", "attr": "src"},
     ],
 }
 
