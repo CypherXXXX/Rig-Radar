@@ -9,9 +9,11 @@ parallel = true
 
 [default.deploy.parameters]
 stack_name = "rigradar-stack"
+region = "us-east-1"
 resolve_s3 = true
 s3_prefix = "rigradar-stack"
-confirm_changeset = true
+confirm_changeset = false
 capabilities = "CAPABILITY_IAM"
 disable_rollback = true
 image_repositories = []
+parameter_overrides = "DiscordWebhookSecret=\"https://discord.com/api/webhooks/1487475727401091202/niT9sJVakpMlY8de0hZUg3NKbLXHHCi1P_uZyxXsZpAoA-Df_tUlxBrzJBVu9w2Kbhfn\""

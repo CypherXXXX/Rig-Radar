@@ -1,3 +1,4 @@
+import traceback
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 from models import (
@@ -167,7 +168,6 @@ async def get_analytics(
             product_name=item.get("product_name", ""),
         )
     except Exception as e:
-        import traceback
         traceback.print_exc()
         pass
 

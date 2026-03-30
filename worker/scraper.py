@@ -1,164 +1,189 @@
-from curl_cffi import requests as cffi_requests
-from bs4 import BeautifulSoup
-from typing import Optional
 import re
+import json
+import random
+import requests
+from typing import Optional
+from bs4 import BeautifulSoup
 
-BROWSER_HEADERS = {
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-IN,en-US;q=0.9,en;q=0.8,hi;q=0.7",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Cache-Control": "no-cache",
-    "Upgrade-Insecure-Requests": "1",
-}
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+]
+
+def _get_headers(referer: str = "") -> dict:
+    ua = random.choice(USER_AGENTS)
+    h = {
+        "User-Agent": ua,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-IN,en-US;q=0.9,en;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control": "no-cache",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Sec-CH-UA": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": '"Windows"',
+    }
+    if referer:
+        h["Referer"] = referer
+        h["Sec-Fetch-Site"] = "same-origin"
+    return h
+
+def _safe_get(url: str, referer: str = "", timeout: int = 20) -> Optional[str]:
+    session = requests.Session()
+    session.headers.update(_get_headers(referer))
+    for attempt in range(3):
+        try:
+            if attempt > 0:
+                session.headers.update(_get_headers(referer))
+            r = session.get(url, timeout=timeout, allow_redirects=True)
+            r.raise_for_status()
+            return r.text
+        except Exception:
+            pass
+    return None
+
+def _pricehistory_lookup(product_url: str) -> dict:
+    session = requests.Session()
+    session.headers.update(_get_headers("https://pricehistory.app/"))
+    session.headers["Content-Type"] = "application/json"
+    try:
+        r = session.post(
+            "https://pricehistory.app/api/search",
+            json={"url": product_url},
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if data.get("status") and data.get("code"):
+            return {"slug": data["code"], "name": data.get("name", "")}
+    except Exception:
+        pass
+    return {}
+
+def _ph_extract_price(html: str) -> Optional[float]:
+    pairs = re.findall(r'\[\s*\d{10,13}\s*,\s*(\d+(?:\.\d+)?)\s*\]', html)
+    if pairs:
+        try:
+            val = float(pairs[-1])
+            if val > 10:
+                return val
+        except (ValueError, TypeError):
+            pass
+
+    for pat in [
+        r'"currentPrice"\s*:\s*(\d+(?:\.\d+)?)',
+        r'"latestPrice"\s*:\s*(\d+(?:\.\d+)?)',
+    ]:
+        m = re.search(pat, html)
+        if m:
+            try:
+                val = float(m.group(1))
+                if val > 10:
+                    return val
+            except (ValueError, TypeError):
+                pass
+
+    chart_m = re.search(r'(?:chartData|priceData)\s*[=:]\s*(\[[\s\S]{5,8000}?\])\s*[;,\n]', html)
+    if chart_m:
+        try:
+            data = json.loads(chart_m.group(1))
+            if isinstance(data, list) and data:
+                last = data[-1]
+                if isinstance(last, (int, float)):
+                    return float(last)
+                if isinstance(last, list) and len(last) >= 2:
+                    return float(last[1])
+                if isinstance(last, dict):
+                    for k in ("y", "price", "value"):
+                        if last.get(k):
+                            return float(last[k])
+        except Exception:
+            pass
+    return None
 
 PRICE_SELECTORS = {
     "amazon": [
         "span.a-price span.a-offscreen",
-        "span.a-offscreen",
-        "span.a-price-whole",
+        "#corePrice_feature_div span.a-offscreen",
         "#priceblock_ourprice",
         "#priceblock_dealprice",
+        "span.a-price-whole",
     ],
-    "newegg": [
-        "li.price-current",
-        ".price-current strong",
-    ],
-    "bestbuy": [
-        ".priceView-customer-price span",
-        ".priceView-hero-price span",
-    ],
-    "flipkart": [
-        "div._30jeq3",
-        "div._1vC4OE",
-        "div.Nx9bqj",
-        "div.CEmiEU div",
-        "div._16Jk6d",
-        "div.hl05eU div.Nx9bqj",
-        "div.yRaY8j",
-        "div._25b18c div",
-    ],
+    "newegg": ["li.price-current"],
+    "bestbuy": [".priceView-customer-price span"],
+    "flipkart": ["div.Nx9bqj", "div._30jeq3", "div._1vC4OE"],
 }
 
-TITLE_SELECTORS = {
-    "amazon": ["#productTitle", "h1.product-title-word-break"],
-    "newegg": [".product-title", "h1.product-title"],
-    "bestbuy": [".sku-title h1", ".sku-title"],
-    "flipkart": ["span.VU-ZEz", "span.B_NuCI", "h1._9E25nV", "h1.yhB1nd"],
-}
-
-IMAGE_SELECTORS = {
-    "amazon": [
-        {"selector": "#landingImage", "attr": "src"},
-        {"selector": "img[data-old-hires]", "attr": "data-old-hires"},
-        {"selector": "#imgTagWrapperId img", "attr": "src"},
-    ],
-    "newegg": [
-        {"selector": ".product-view-img-original", "attr": "src"},
-        {"selector": ".swiper-slide img", "attr": "src"},
-    ],
-    "bestbuy": [
-        {"selector": ".primary-image", "attr": "src"},
-        {"selector": ".shop-media-gallery img", "attr": "src"},
-    ],
-    "flipkart": [
-        {"selector": "img._396cs4", "attr": "src"},
-        {"selector": "img._2r_T1I", "attr": "src"},
-        {"selector": "div._3kidJX img", "attr": "src"},
-        {"selector": "img.DByuf4", "attr": "src"},
-        {"selector": "img.qqDXDz", "attr": "src"},
-    ],
-}
-
-def fetch_product_page(url: str) -> str:
-    profiles = ["chrome120", "chrome110", "safari17_0"]
-    last_error = None
-    for profile in profiles:
-        try:
-            response = cffi_requests.get(
-                url,
-                headers=BROWSER_HEADERS,
-                impersonate=profile,
-                timeout=20,
-                allow_redirects=True,
-            )
-            response.raise_for_status()
-            return response.text
-        except Exception as e:
-            last_error = e
-    raise last_error
-
-def clean_price_text(raw_text: str) -> Optional[float]:
-    cleaned = re.sub(r"[^\d.,]", "", raw_text.strip())
-    cleaned = cleaned.replace(",", "")
-    if not cleaned:
-        return None
+def _parse_price(text: str) -> Optional[float]:
+    cleaned = re.sub(r"[^\d.]", "", text.replace(",", "").strip())
     try:
-        return float(cleaned)
+        return float(cleaned) if cleaned else None
     except ValueError:
         return None
 
-def scrape_price(html: str, store: str) -> Optional[float]:
-    soup = BeautifulSoup(html, "lxml")
-
-    selectors = PRICE_SELECTORS.get(store, [])
-    for selector in selectors:
-        element = soup.select_one(selector)
-        if element:
-            price = clean_price_text(element.get_text())
-            if price and price > 0:
-                return price
-
-    price_texts = soup.find_all(string=re.compile(r"₹[\d,]+"))
-    for pt in price_texts:
-        price = clean_price_text(pt)
-        if price and price > 100:
-            return price
-
-    return None
-
-def scrape_title(html: str, store: str) -> Optional[str]:
-    soup = BeautifulSoup(html, "lxml")
-
-    og_tag = soup.find("meta", property="og:title")
-    if og_tag and og_tag.get("content"):
-        return og_tag["content"].strip()[:200]
-
-    selectors = TITLE_SELECTORS.get(store, [])
-    for selector in selectors:
-        element = soup.select_one(selector)
-        if element:
-            title = element.get_text().strip()
-            if title:
-                return title[:200]
-
-    return None
-
-def scrape_image(html: str, store: str) -> Optional[str]:
-    soup = BeautifulSoup(html, "lxml")
-
-    og_image = soup.find("meta", property="og:image")
-    if og_image and og_image.get("content"):
-        return og_image["content"]
-
-    twitter_image = soup.find("meta", attrs={"name": "twitter:image"})
-    if twitter_image and twitter_image.get("content"):
-        return twitter_image["content"]
-
-    selectors = IMAGE_SELECTORS.get(store, [])
-    for selector_config in selectors:
-        element = soup.select_one(selector_config["selector"])
-        if element:
-            image_url = element.get(selector_config["attr"])
-            if image_url:
-                return image_url
-
+def _jsonld_price(soup: BeautifulSoup) -> Optional[float]:
+    for tag in soup.find_all("script", type="application/ld+json"):
+        try:
+            d = json.loads(tag.string)
+            if isinstance(d, list):
+                for item in d:
+                    if isinstance(item, dict) and item.get("@type") == "Product":
+                        d = item
+                        break
+                else:
+                    d = d[0] if d else {}
+            if isinstance(d, dict):
+                if d.get("@type") != "Product":
+                    for item in d.get("@graph", []):
+                        if isinstance(item, dict) and item.get("@type") == "Product":
+                            d = item
+                            break
+                offers = d.get("offers", {})
+                if isinstance(offers, list) and offers:
+                    offers = offers[0]
+                if isinstance(offers, dict):
+                    for f in ("price", "lowPrice"):
+                        v = offers.get(f)
+                        if v:
+                            p = float(v)
+                            if p > 0:
+                                return p
+        except Exception:
+            continue
     return None
 
 def scrape_product(url: str, store: str) -> dict:
-    html = fetch_product_page(url)
+    price = None
 
-    return {
-        "price": scrape_price(html, store),
-        "title": scrape_title(html, store),
-        "image": scrape_image(html, store),
-    }
+    ph = _pricehistory_lookup(url)
+    if ph.get("slug"):
+        ph_html = _safe_get(
+            f"https://pricehistory.app/p/{ph['slug']}",
+            referer="https://pricehistory.app/",
+        )
+        if ph_html:
+            price = _ph_extract_price(ph_html)
+
+    if not price:
+        html = _safe_get(url)
+        if html:
+            soup = BeautifulSoup(html, "lxml")
+            price = _jsonld_price(soup)
+            if not price:
+                for sel in PRICE_SELECTORS.get(store, []):
+                    el = soup.select_one(sel)
+                    if el:
+                        p = _parse_price(el.get_text())
+                        if p and p > 0:
+                            price = p
+                            break
+
+    return {"price": price}

@@ -4,19 +4,41 @@ import random
 import hashlib
 import json
 import time as _time
+import requests
 from typing import Optional
-from curl_cffi import requests as cffi_requests
-from curl_cffi.requests import Session as CffiSession
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 
-BROWSER_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Cache-Control": "no-cache",
-}
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+]
+
+def _get_headers(referer: str = "") -> dict:
+    ua = random.choice(USER_AGENTS)
+    headers = {
+        "User-Agent": ua,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Sec-CH-UA": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": '"Windows"',
+    }
+    if referer:
+        headers["Referer"] = referer
+        headers["Sec-Fetch-Site"] = "same-origin"
+    return headers
 
 _stats_cache: dict = {}
 STATS_CACHE_TTL = 3600 * 6
@@ -34,18 +56,15 @@ def extract_asin(url: str) -> Optional[str]:
             return m.group(1).upper()
     return None
 
-def _fetch_page(url: str, timeout: int = 20) -> str:
-    profiles = ["chrome120", "chrome110", "safari17_0"]
+def _fetch_page(url: str, timeout: int = 20, referer: str = "") -> str:
+    session = requests.Session()
+    session.headers.update(_get_headers(referer))
     last_error = None
-    for profile in profiles:
+    for attempt in range(3):
         try:
-            response = cffi_requests.get(
-                url,
-                headers=BROWSER_HEADERS,
-                impersonate=profile,
-                timeout=timeout,
-                allow_redirects=True,
-            )
+            if attempt > 0:
+                session.headers.update(_get_headers(referer))
+            response = session.get(url, timeout=timeout, allow_redirects=True)
             response.raise_for_status()
             return response.text
         except Exception as e:
@@ -74,22 +93,23 @@ def _find_product_slug(asin: Optional[str], product_url: str = "") -> Optional[s
         amazon_url = f"https://www.amazon.in/dp/{dp_match.group(1)}"
 
     try:
-        with CffiSession(impersonate="chrome110") as session:
-            session.get("https://pricehistory.app", timeout=10)
-            resp = session.post(
-                "https://pricehistory.app/api/search",
-                json={"url": amazon_url},
-                timeout=15,
-                headers={
-                    "Referer": "https://pricehistory.app/",
-                    "Origin": "https://pricehistory.app",
-                    "Content-Type": "application/json",
-                },
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get("status") and data.get("code"):
-                    return data["code"]
+        session = requests.Session()
+        session.headers.update(_get_headers())
+        session.get("https://pricehistory.app", timeout=10)
+        resp = session.post(
+            "https://pricehistory.app/api/search",
+            json={"url": amazon_url},
+            timeout=15,
+            headers={
+                "Referer": "https://pricehistory.app/",
+                "Origin": "https://pricehistory.app",
+                "Content-Type": "application/json",
+            },
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("status") and data.get("code"):
+                return data["code"]
     except Exception:
         pass
 
@@ -133,7 +153,10 @@ def _extract_chart_data_from_scripts(soup: BeautifulSoup) -> Optional[dict]:
 
 def _scrape_pricehistory_stats(slug: str) -> Optional[dict]:
     try:
-        html = _fetch_page(f"https://pricehistory.app/p/{slug}")
+        html = _fetch_page(
+            f"https://pricehistory.app/p/{slug}",
+            referer="https://pricehistory.app/"
+        )
         if len(html) < 5000:
             return None
 

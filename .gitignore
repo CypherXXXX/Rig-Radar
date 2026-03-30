@@ -72,6 +72,7 @@ Thumbs.db
 !/worker/requirements.txt
 !/worker/scraper.py
 !/worker/throttle.py
+!/worker/trending_worker.py
 
 frontend/task.md
 frontend/.clerk/

@@ -2,6 +2,13 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: RigRadar Serverless Infrastructure
 
+Parameters:
+  DiscordWebhookSecret:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Discord webhook URL for price drop notifications
+
 Globals:
   Function:
     Timeout: 30
@@ -9,7 +16,6 @@ Globals:
     Runtime: python3.12
     Environment:
       Variables:
-        AWS_REGION_NAME: !Ref AWS::Region
         DYNAMODB_TABLE_TRACKED: !Ref TrackedItemsTable
         DYNAMODB_TABLE_HISTORY: !Ref PriceHistoryTable
         DYNAMODB_TABLE_USERS: !Ref UsersTable
@@ -19,6 +25,8 @@ Resources:
 
   TrackedItemsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: RigRadar_TrackedItems
       BillingMode: PAY_PER_REQUEST
@@ -40,6 +48,8 @@ Resources:
 
   PriceHistoryTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: RigRadar_PriceHistory
       BillingMode: PAY_PER_REQUEST
@@ -56,6 +66,8 @@ Resources:
 
   UsersTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: RigRadar_Users
       BillingMode: PAY_PER_REQUEST
@@ -68,6 +80,8 @@ Resources:
 
   TrendingTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: RigRadar_Trending
       BillingMode: PAY_PER_REQUEST
@@ -115,6 +129,9 @@ Resources:
       CodeUri: ../worker/
       Timeout: 300
       MemorySize: 512
+      Environment:
+        Variables:
+          DISCORD_WEBHOOK_SECRET: !Ref DiscordWebhookSecret
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackedItemsTable
