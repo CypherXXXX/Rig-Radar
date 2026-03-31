@@ -44,11 +44,15 @@ async def create_tracking_rule(request: TrackRequest):
 
     try:
         metadata = extract_product_metadata(request.product_url)
-    except Exception as extraction_error:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Failed to extract product metadata: {str(extraction_error)}",
-        )
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception:
+        metadata = {
+            "store": store,
+            "product_name": "Unknown Product",
+            "product_image_url": "",
+            "current_price": None,
+        }
 
     item_id = generate_item_id()
     current_timestamp = get_current_timestamp()
@@ -57,10 +61,10 @@ async def create_tracking_rule(request: TrackRequest):
         "item_id": item_id,
         "user_id": request.user_id,
         "product_url": request.product_url,
-        "product_name": metadata["product_name"],
-        "product_image_url": metadata["product_image_url"],
-        "store": metadata["store"],
-        "current_price": metadata["current_price"] or 0.0,
+        "product_name": metadata.get("product_name") or "Unknown Product",
+        "product_image_url": metadata.get("product_image_url") or "",
+        "store": metadata.get("store") or store,
+        "current_price": metadata.get("current_price") or 0.0,
         "target_price": request.target_price,
         "notification_type": request.notification_type.value,
         "contact_info": request.contact_info,

@@ -98,7 +98,7 @@ Resources:
       FunctionName: RigRadar-API
       Handler: main.handler
       CodeUri: ../backend/
-      Timeout: 30
+      Timeout: 60
       MemorySize: 512
       Policies:
         - DynamoDBCrudPolicy:

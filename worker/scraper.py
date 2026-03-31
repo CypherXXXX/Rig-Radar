@@ -6,10 +6,10 @@ from typing import Optional
 from bs4 import BeautifulSoup
 
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 ]
 
 def _get_headers(referer: str = "") -> dict:
@@ -27,7 +27,7 @@ def _get_headers(referer: str = "") -> dict:
         "Sec-Fetch-Mode": "navigate",
         "Sec-Fetch-Site": "none",
         "Sec-Fetch-User": "?1",
-        "Sec-CH-UA": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        "Sec-CH-UA": '"Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"',
         "Sec-CH-UA-Mobile": "?0",
         "Sec-CH-UA-Platform": '"Windows"',
     }
@@ -44,8 +44,8 @@ def _safe_get(url: str, referer: str = "", timeout: int = 20) -> Optional[str]:
             if attempt > 0:
                 session.headers.update(_get_headers(referer))
             r = session.get(url, timeout=timeout, allow_redirects=True)
-            r.raise_for_status()
-            return r.text
+            if r.status_code == 200:
+                return r.text
         except Exception:
             pass
     return None
@@ -54,16 +54,17 @@ def _pricehistory_lookup(product_url: str) -> dict:
     session = requests.Session()
     session.headers.update(_get_headers("https://pricehistory.app/"))
     session.headers["Content-Type"] = "application/json"
+    session.headers["Origin"] = "https://pricehistory.app"
     try:
         r = session.post(
             "https://pricehistory.app/api/search",
             json={"url": product_url},
             timeout=15,
         )
-        r.raise_for_status()
-        data = r.json()
-        if data.get("status") and data.get("code"):
-            return {"slug": data["code"], "name": data.get("name", "")}
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("status") and data.get("code"):
+                return {"slug": data["code"], "name": data.get("name", "")}
     except Exception:
         pass
     return {}
@@ -72,15 +73,16 @@ def _ph_extract_price(html: str) -> Optional[float]:
     pairs = re.findall(r'\[\s*\d{10,13}\s*,\s*(\d+(?:\.\d+)?)\s*\]', html)
     if pairs:
         try:
-            val = float(pairs[-1])
-            if val > 10:
-                return val
+            prices = [float(p) for p in pairs if float(p) > 10]
+            if prices:
+                return prices[-1]
         except (ValueError, TypeError):
             pass
 
     for pat in [
         r'"currentPrice"\s*:\s*(\d+(?:\.\d+)?)',
         r'"latestPrice"\s*:\s*(\d+(?:\.\d+)?)',
+        r'"price"\s*:\s*(\d+(?:\.\d+)?)',
     ]:
         m = re.search(pat, html)
         if m:
@@ -90,23 +92,6 @@ def _ph_extract_price(html: str) -> Optional[float]:
                     return val
             except (ValueError, TypeError):
                 pass
-
-    chart_m = re.search(r'(?:chartData|priceData)\s*[=:]\s*(\[[\s\S]{5,8000}?\])\s*[;,\n]', html)
-    if chart_m:
-        try:
-            data = json.loads(chart_m.group(1))
-            if isinstance(data, list) and data:
-                last = data[-1]
-                if isinstance(last, (int, float)):
-                    return float(last)
-                if isinstance(last, list) and len(last) >= 2:
-                    return float(last[1])
-                if isinstance(last, dict):
-                    for k in ("y", "price", "value"):
-                        if last.get(k):
-                            return float(last[k])
-        except Exception:
-            pass
     return None
 
 PRICE_SELECTORS = {
@@ -119,7 +104,12 @@ PRICE_SELECTORS = {
     ],
     "newegg": ["li.price-current"],
     "bestbuy": [".priceView-customer-price span"],
-    "flipkart": ["div.Nx9bqj", "div._30jeq3", "div._1vC4OE"],
+    "flipkart": [
+        "div.Nx9bqj.CxhGGd",
+        "div.Nx9bqj",
+        "div._30jeq3",
+        "div._1vC4OE",
+    ],
 }
 
 def _parse_price(text: str) -> Optional[float]:
