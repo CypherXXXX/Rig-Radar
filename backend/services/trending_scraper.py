@@ -27,6 +27,13 @@ AMAZON_SEED_ASINS = [
     ("B09NVPTQPM", "Headset", "amazon"),
     ("B08N5WRWNW", "Mouse", "amazon"),
     ("B0C7K5N42C", "RAM", "amazon"),
+    ("B0GPVVYKTQ", "Tablet", "amazon"),
+    ("B0CHX1W1XY", "Laptop", "amazon"),
+    ("B0DGHW8ZPQ", "GPU", "amazon"),
+    ("B0BT4JTK5J", "Laptop", "amazon"),
+    ("B0CX23V2ZK", "CPU", "amazon"),
+    ("B0DJHJ3QK8", "Mouse", "amazon"),
+    ("B09WMH6LYB", "Earphones", "amazon"),
 ]
 
 FLIPKART_SEED_URLS = [
@@ -39,6 +46,7 @@ FLIPKART_SEED_URLS = [
     "https://www.flipkart.com/one-plus-nord-ce-4-lite-5g-mega-blue-128-gb/p/itmd8f5186f86eae",
     "https://www.flipkart.com/lg-108-cm-43-inch-ultra-hd-4k-led-smart-oled-tv/p/itm1c18eb1f5c26a",
     "https://www.flipkart.com/boult-audio-airbass-propods-x-tws/p/itm7d8d8c3f1e3b2",
+    "https://www.flipkart.com/apple-macbook-air-m2-8-gb-256-gb-ssd-mac-os-monterey-mly33hn-a/p/itm45b5f5db55963",
 ]
 
 AMAZON_BESTSELLER_URLS = [
@@ -49,6 +57,8 @@ AMAZON_BESTSELLER_URLS = [
     ("https://www.amazon.in/gp/bestsellers/computers/1375406031", "Keyboard"),
     ("https://www.amazon.in/gp/bestsellers/computers/1375408031", "Mouse"),
     ("https://www.amazon.in/gp/bestsellers/computers/1375400031", "Headset"),
+    ("https://www.amazon.in/gp/bestsellers/electronics/1389401031", "Earphones"),
+    ("https://www.amazon.in/gp/bestsellers/computers/1375380031", "RAM"),
 ]
 
 def _get_headers(referer: str = "") -> dict:
@@ -78,7 +88,7 @@ def _get_headers(referer: str = "") -> dict:
 def _fetch(url: str, referer: str = "", timeout: int = 20) -> Optional[str]:
     session = requests.Session()
     session.headers.update(_get_headers(referer))
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             if attempt > 0:
                 session.headers.update(_get_headers(referer))
@@ -190,23 +200,40 @@ def _process_amazon_seed(asin: str, category: str) -> Optional[dict]:
     except Exception:
         return None
 
-def _scrape_amazon_bestseller(url: str, category: str) -> Optional[dict]:
+def _scrape_amazon_bestseller(url: str, category: str) -> list[dict]:
     html = _fetch(url)
     if not html:
-        return None
+        return []
     soup = BeautifulSoup(html, "lxml")
 
-    items = soup.select("li.zg-item-immersion") or soup.select(".zg-grid-general-faceout")
-    for item in items[:8]:
+    items = (
+        soup.select("div[id^='p13n-asin-index-']")
+        or soup.select("li.zg-item-immersion")
+        or soup.select(".zg-grid-general-faceout")
+        or soup.select("div._cDEzb_itemContainer_1GHJR")
+    )
+
+    results = []
+    for item in items[:10]:
         try:
-            name_el = item.select_one(".p13n-sc-truncate-desktop-type2") or item.select_one(".p13n-sc-truncated") or item.select_one("._cDEzb_p13n-sc-css-line-clamp-3_g3dy1")
+            name_el = (
+                item.select_one(".p13n-sc-truncate-desktop-type2")
+                or item.select_one(".p13n-sc-truncated")
+                or item.select_one("._cDEzb_p13n-sc-css-line-clamp-3_g3dy1")
+                or item.select_one("span.a-size-small")
+                or item.select_one("div._cDEzb_p13n-sc-css-line-clamp-1_1Fn1y")
+            )
             if not name_el:
                 continue
             name = name_el.get_text(strip=True)
             if not name or len(name) < 8:
                 continue
 
-            price_el = item.select_one(".p13n-sc-price") or item.select_one("span.a-color-price")
+            price_el = (
+                item.select_one(".p13n-sc-price")
+                or item.select_one("span.a-color-price")
+                or item.select_one("span._cDEzb_p13n-sc-price_3mJ9Z")
+            )
             if not price_el:
                 continue
             price = _parse_price(price_el.get_text())
@@ -227,7 +254,7 @@ def _scrape_amazon_bestseller(url: str, category: str) -> Optional[dict]:
                 continue
             product_url = f"https://www.amazon.in/dp/{dp_m.group(1)}"
 
-            return {
+            results.append({
                 "id": _make_id(product_url),
                 "name": name[:150],
                 "image": image,
@@ -239,10 +266,12 @@ def _scrape_amazon_bestseller(url: str, category: str) -> Optional[dict]:
                 "rating": 0.0,
                 "reviews": 0,
                 "category": category,
-            }
+            })
+            if len(results) >= 2:
+                break
         except Exception:
             continue
-    return None
+    return results
 
 def _process_flipkart_seed(url: str) -> Optional[dict]:
     try:
@@ -275,6 +304,84 @@ def _process_flipkart_seed(url: str) -> Optional[dict]:
     except Exception:
         return None
 
+def _scrape_amazon_product_direct(asin: str, category: str) -> Optional[dict]:
+    product_url = f"https://www.amazon.in/dp/{asin}"
+    html = _fetch(product_url)
+    if not html:
+        return None
+
+    try:
+        soup = BeautifulSoup(html, "lxml")
+
+        price = None
+        for sel in [
+            "span.a-price span.a-offscreen",
+            "#corePrice_feature_div span.a-offscreen",
+            "#corePriceDisplay_desktop_feature_div span.a-offscreen",
+            "#priceblock_ourprice",
+            "span.a-price-whole",
+        ]:
+            el = soup.select_one(sel)
+            if el:
+                p = _parse_price(el.get_text())
+                if p and p > 0:
+                    price = p
+                    break
+
+        if not price:
+            for tag in soup.find_all("script", type="application/ld+json"):
+                try:
+                    d = json.loads(tag.string)
+                    if isinstance(d, list):
+                        d = d[0] if d else {}
+                    if isinstance(d, dict):
+                        offers = d.get("offers", {})
+                        if isinstance(offers, list) and offers:
+                            offers = offers[0]
+                        if isinstance(offers, dict):
+                            v = offers.get("price") or offers.get("lowPrice")
+                            if v:
+                                price = float(v)
+                except Exception:
+                    continue
+
+        if not price or price < 100:
+            return None
+
+        name_el = soup.select_one("#productTitle")
+        name = name_el.get_text(strip=True)[:150] if name_el else f"Amazon Product {asin}"
+
+        image = None
+        for script in soup.find_all("script", type="text/javascript"):
+            txt = script.string or ""
+            if "colorImages" in txt:
+                m = re.search(r'"hiRes"\s*:\s*"(https://[^"]+)"', txt)
+                if m:
+                    image = m.group(1)
+                    break
+        if not image:
+            img_el = soup.select_one("#landingImage") or soup.select_one("#imgBlkFront")
+            if img_el:
+                image = img_el.get("src", "")
+
+        return {
+            "id": _make_id(product_url),
+            "name": name,
+            "image": image or "",
+            "url": product_url,
+            "store": "Amazon",
+            "price": price,
+            "originalPrice": round(price * 1.1, 2),
+            "discount": 9,
+            "rating": 0.0,
+            "reviews": 0,
+            "category": category,
+        }
+    except Exception:
+        return None
+
+import json
+
 def get_trending_products(force_refresh: bool = False) -> list[dict]:
     global _cache
     now = time.time()
@@ -282,49 +389,75 @@ def get_trending_products(force_refresh: bool = False) -> list[dict]:
         return _cache["data"]
 
     products = []
+    seen_ids = set()
 
-    with ThreadPoolExecutor(max_workers=6) as pool:
+    def _add_product(product):
+        if product and product["id"] not in seen_ids and product.get("name") and product["name"] != "Unknown Product":
+            seen_ids.add(product["id"])
+            products.append(product)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
         seed_futures = {
             pool.submit(_process_amazon_seed, asin, cat): f"amazon_{asin}"
             for asin, cat, _ in AMAZON_SEED_ASINS
         }
         for future in as_completed(seed_futures):
             try:
-                result = future.result(timeout=20)
-                if result and result["id"] not in {p["id"] for p in products}:
-                    products.append(result)
+                result = future.result(timeout=25)
+                _add_product(result)
             except Exception:
                 pass
 
-    if len(products) < 3:
-        with ThreadPoolExecutor(max_workers=4) as pool:
+    if len(products) < 5:
+        with ThreadPoolExecutor(max_workers=6) as pool:
             bs_futures = {
                 pool.submit(_scrape_amazon_bestseller, url, cat): cat
                 for url, cat in AMAZON_BESTSELLER_URLS
             }
             for future in as_completed(bs_futures):
                 try:
-                    result = future.result(timeout=25)
-                    if result and result["id"] not in {p["id"] for p in products}:
-                        products.append(result)
-                        if len(products) >= 5:
-                            break
+                    results = future.result(timeout=30)
+                    if isinstance(results, list):
+                        for result in results:
+                            _add_product(result)
+                    elif results:
+                        _add_product(results)
                 except Exception:
                     pass
 
-    with ThreadPoolExecutor(max_workers=5) as pool:
+    if len(products) < 5:
+        direct_asins = [
+            ("B0CZLGTFMF", "GPU"),
+            ("B0D5J3D27K", "CPU"),
+            ("B09HN37XDX", "SSD"),
+            ("B0GPVVYKTQ", "Tablet"),
+        ]
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            direct_futures = {
+                pool.submit(_scrape_amazon_product_direct, asin, cat): asin
+                for asin, cat in direct_asins
+            }
+            for future in as_completed(direct_futures):
+                try:
+                    result = future.result(timeout=25)
+                    _add_product(result)
+                except Exception:
+                    pass
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
         fk_futures = {pool.submit(_process_flipkart_seed, url): url for url in FLIPKART_SEED_URLS}
         fk_results = []
         for future in as_completed(fk_futures):
             try:
-                result = future.result(timeout=20)
-                if result:
+                result = future.result(timeout=25)
+                if result and result.get("name") and result["name"] != "Unknown Product":
                     fk_results.append(result)
             except Exception:
                 pass
 
     fk_results.sort(key=lambda x: x.get("discount", 0), reverse=True)
-    products.extend(fk_results[:5])
+    for r in fk_results[:5]:
+        _add_product(r)
 
     if products:
         _cache["data"] = products

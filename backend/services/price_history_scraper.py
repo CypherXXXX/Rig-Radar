@@ -1,8 +1,6 @@
 import re
-import math
 import random
 import hashlib
-import json
 import time as _time
 import requests
 from typing import Optional
@@ -136,33 +134,25 @@ def _scrape_pricehistory_page_stats(html: str) -> dict:
     stats = {}
     try:
         soup = BeautifulSoup(html, "lxml")
-        stat_containers = soup.find_all(
-            ["div", "span", "p"],
-            class_=re.compile(r"stat|price|info|detail|summary", re.IGNORECASE)
-        )
-        stat_text_parts = [c.get_text(" ", strip=True) for c in stat_containers]
-        stat_section_text = " ".join(stat_text_parts)
-        if not stat_section_text:
-            stat_section_text = soup.get_text(" ", strip=True)
+        full_text = soup.get_text(" ", strip=True)
 
         for label, key in [("Highest", "highest"), ("Lowest", "lowest"), ("Average", "average")]:
-            m = re.search(
-                rf'{label}\s+[Pp]rice\s*[:\s]*(?:₹|Rs\.?|INR)?\s*([\d,]+(?:\.\d+)?)',
-                stat_section_text
-            )
-            if not m:
-                m = re.search(
-                    rf'{label}\s*[:\s]*(?:₹|Rs\.?|INR)?\s*([\d,]+(?:\.\d+)?)',
-                    stat_section_text
-                )
-            if m:
-                cleaned = m.group(1).replace(",", "")
-                try:
-                    val = float(cleaned)
-                    if val > 0:
-                        stats[key] = val
-                except (ValueError, TypeError):
-                    pass
+            for pattern in [
+                rf'{label}[\s\w]*[Pp]rice\s*[:\s]*(?:₹|Rs\.?|INR)\s*([\d,]+(?:\.\d+)?)',
+                rf'{label}[\s\w]*[Pp]rice\s*[:\s]*([\d,]+(?:\.\d+)?)',
+                rf'{label}\s*[:\s]*(?:₹|Rs\.?|INR)\s*([\d,]+(?:\.\d+)?)',
+                rf'(?:₹|Rs\.?|INR)\s*([\d,]+(?:\.\d+)?)\s*{label}',
+            ]:
+                m = re.search(pattern, full_text, re.IGNORECASE)
+                if m:
+                    cleaned = m.group(1).replace(",", "")
+                    try:
+                        val = float(cleaned)
+                        if val > 0:
+                            stats[key] = val
+                            break
+                    except (ValueError, TypeError):
+                        pass
     except Exception:
         pass
     return stats
@@ -215,72 +205,6 @@ def _clean_points_for_response(points: list[dict]) -> list[dict]:
             })
     return cleaned
 
-def _generate_fallback_curve(
-    stats: dict,
-    current_price: float,
-    months: int = 6,
-) -> list[dict]:
-    highest = stats.get("highest", current_price * 1.15)
-    lowest = stats.get("lowest", current_price * 0.85)
-    average = stats.get("average", (highest + lowest) / 2)
-
-    if highest < current_price:
-        highest = current_price
-    if lowest > current_price:
-        lowest = current_price
-    if average > highest:
-        average = (highest + lowest) / 2
-    if average < lowest:
-        average = (highest + lowest) / 2
-
-    end_date = datetime.utcnow()
-    start_date = end_date - timedelta(days=months * 30)
-    total_days = (end_date - start_date).days
-    interval = max(3, total_days // 45)
-    num_points = total_days // interval
-
-    seed_str = f"{lowest:.0f}{highest:.0f}{current_price:.0f}{months}"
-    rng = random.Random(hashlib.md5(seed_str.encode()).hexdigest())
-
-    price_range = highest - lowest
-
-    entries = []
-    for i in range(num_points + 1):
-        day_offset = i * interval
-        if day_offset > total_days:
-            day_offset = total_days
-        timestamp = start_date + timedelta(days=day_offset)
-
-        t = i / max(num_points, 1)
-        trend = lowest + (current_price - lowest) * (t ** 0.8)
-        wave1 = math.sin(t * math.pi * 3.5) * price_range * 0.18
-        wave2 = math.sin(t * math.pi * 6.3 + 1.2) * price_range * 0.1
-        wave3 = math.cos(t * math.pi * 9.1 + 2.8) * price_range * 0.05
-        noise = rng.gauss(0, 1) * price_range * 0.04
-        pull = (average - trend) * 0.25
-        price = trend + wave1 + wave2 + wave3 + noise + pull
-        price = max(lowest, min(highest, price))
-        price = round(price, 2)
-        entries.append({
-            "timestamp": timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "price": price,
-        })
-
-    if not entries:
-        return entries
-
-    entries[-1]["price"] = current_price
-
-    low_idx = rng.randint(1, max(2, len(entries) // 4))
-    if low_idx < len(entries):
-        entries[low_idx]["price"] = lowest
-
-    high_idx = rng.randint(max(2, len(entries) // 2), max(3, len(entries) - 2))
-    if high_idx < len(entries):
-        entries[high_idx]["price"] = highest
-
-    return entries
-
 def fetch_external_price_history(
     product_url: str,
     months: int = 6,
@@ -321,32 +245,40 @@ def fetch_external_price_history(
         if not filtered and all_points:
             filtered = all_points[-5:]
 
-        computed_stats = _compute_stats_from_points(filtered, current_price)
-
-        if page_stats.get("highest") and page_stats.get("lowest") and months >= 12:
+        if page_stats.get("highest") and page_stats.get("lowest"):
             stats = {
                 "highest": page_stats["highest"],
                 "lowest": page_stats["lowest"],
-                "average": page_stats.get("average", computed_stats.get("average", 0)),
+                "average": page_stats.get("average", round(
+                    (page_stats["highest"] + page_stats["lowest"]) / 2, 2
+                )),
             }
         else:
-            stats = computed_stats
+            stats = _compute_stats_from_points(filtered, current_price)
 
         if not stats.get("highest"):
-            stats = computed_stats
+            stats = _compute_stats_from_points(filtered, current_price)
 
         history = _clean_points_for_response(filtered)
         return history, stats
 
-    cp = current_price
-    if cp > 0:
-        synth_stats = {
-            "highest": round(cp * 1.15, 2),
-            "lowest": round(cp * 0.82, 2),
-            "average": round(cp * 1.02, 2),
-            "current": cp,
-        }
-        history = _generate_fallback_curve(synth_stats, cp, months)
-        return history, synth_stats
+    if current_price and current_price > 0:
+        if page_stats.get("highest") and page_stats.get("lowest"):
+            stats = {
+                "highest": page_stats["highest"],
+                "lowest": page_stats["lowest"],
+                "average": page_stats.get("average", current_price),
+                "current": current_price,
+            }
+        else:
+            stats = {
+                "highest": current_price,
+                "lowest": current_price,
+                "average": current_price,
+                "current": current_price,
+            }
+        now_ts = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        history = [{"timestamp": now_ts, "price": current_price}]
+        return history, stats
 
     return [], {}
